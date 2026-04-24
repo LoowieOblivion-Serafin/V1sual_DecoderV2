@@ -117,10 +117,13 @@ def bold5000_stim_lists_root() -> Path:
 def bold5000_repeated_list_txt() -> Path:
     """
     Lista de 113 estímulos repetidos (test set compartido).
+
+    Release oficial: vive un nivel arriba de Presented_Stimuli, directamente
+    bajo Scene_Stimuli/. Verificado contra figshare release.
     """
     return (
         DATA_DIRS["bold5000_stimuli"]
-        / "Scene_Stimuli" / "Presented_Stimuli"
+        / "Scene_Stimuli"
         / "repeated_stimuli_113_list.txt"
     )
 
