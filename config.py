@@ -190,7 +190,7 @@ HARDWARE_CONFIG: dict[str, object] = {
     "force_cpu":       False,
     "gpu_id":          0,
     "use_bf16":        True,
-    "enable_xformers": True,
+    "enable_xformers": False,
 }
 
 
