@@ -34,7 +34,7 @@ from pathlib import Path
 
 import torch
 from PIL import Image
-from transformers import CLIPModel, CLIPProcessor
+from transformers import CLIPVisionModelWithProjection, CLIPProcessor
 
 logger = logging.getLogger("phase2.extract_vit_features")
 
@@ -60,7 +60,7 @@ def pick_dtype(device: torch.device, force_fp32: bool) -> torch.dtype:
 def load_clip(model_id: str, device: torch.device, dtype: torch.dtype):
     HF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     logger.info(f"Loading CLIP {model_id}  device={device}  dtype={dtype}")
-    model = CLIPModel.from_pretrained(model_id, cache_dir=str(HF_CACHE_DIR))
+    model = CLIPVisionModelWithProjection.from_pretrained(model_id, cache_dir=str(HF_CACHE_DIR))
     model = model.to(device=device, dtype=dtype).eval()
     processor = CLIPProcessor.from_pretrained(model_id, cache_dir=str(HF_CACHE_DIR))
     return model, processor
@@ -71,7 +71,8 @@ def encode_batch(model, processor, paths: list[Path], device, dtype) -> torch.Te
     inputs = processor(images=images, return_tensors="pt")
     pixel_values = inputs["pixel_values"].to(device=device, dtype=dtype)
     with torch.no_grad():
-        feats = model.get_image_features(pixel_values=pixel_values)
+        out = model(pixel_values=pixel_values)
+        feats = out.image_embeds
     return feats.float().cpu()
 
 
