@@ -8,6 +8,8 @@
 #   py -3.12 -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 # ============================================================================
 
+--extra-index-url https://download.pytorch.org/whl/cu118
+
 # ----------------------------------------------------------------------------
 # Core deep learning
 # ----------------------------------------------------------------------------
@@ -23,7 +25,7 @@ diffusers>=0.27.0
 accelerate>=0.28.0
 transformers>=4.38.0
 safetensors>=0.4.0
-xformers>=0.0.22
+xformers==0.0.28.post3
 
 # ----------------------------------------------------------------------------
 # fMRI / NSD
