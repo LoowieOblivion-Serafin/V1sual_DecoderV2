@@ -23,7 +23,9 @@ models_hf/
 # OUTPUTS (generados)
 # ============================================================================
 output_*reconstructions/
+output_reconstructions_sd21/
 phase2_outputs/
+mock_assets/
 *.png
 *.jpg
 *.jpeg

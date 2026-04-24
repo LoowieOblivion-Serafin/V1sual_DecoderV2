@@ -63,19 +63,14 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
-from diffusers import DPMSolverMultistepScheduler
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config
 from phase2.bold5000_loader import get_ordered_test_stems
-from sd_decoder import (
-    SD_PRIOR_PROMPTS,
-    load_sd_unclip_pipeline,
-    reconstruct_from_embedding,
-)
 
 logger = logging.getLogger("phase2.visual_evaluator")
 
@@ -210,6 +205,14 @@ def render_grid(
 # Orquestación
 # ---------------------------------------------------------------------------
 
+def _dummy_recon_from_embed(embed: torch.Tensor, size: int = 256, seed: int = 0) -> Image.Image:
+    """Stub determinista — PIL RGB ruidoso condicionado por el hash del embed. Solo dry-run."""
+    sig = int((embed.detach().float().flatten().sum() * 1e3).item()) ^ seed
+    rng = np.random.default_rng(abs(sig) & 0xFFFFFFFF)
+    arr = rng.integers(0, 256, size=(size, size, 3), dtype=np.uint8)
+    return Image.fromarray(arr, mode="RGB")
+
+
 def run_evaluation(
     subject: str,
     embeds_path: Path,
@@ -224,6 +227,7 @@ def run_evaluation(
     dpi: int,
     grid_rows: int,
     use_cpu: bool,
+    dry_run: bool = False,
 ) -> dict:
     trial_ids, embeds = load_adapter_embeddings(embeds_path)
     stems = align_stems_to_embeddings(subject, embeds.shape[0])
@@ -234,7 +238,7 @@ def run_evaluation(
         stems = stems[:limit]
 
     device = torch.device("cpu" if use_cpu or not torch.cuda.is_available() else "cuda")
-    logger.info(f"device={device} | N={len(stems)} | steps={num_inference_steps} | cfg={guidance_scale}")
+    logger.info(f"device={device} | N={len(stems)} | steps={num_inference_steps} | cfg={guidance_scale} | dry_run={dry_run}")
 
     subj_root = out_base / subject
     recon_dir = subj_root / "reconstructions"
@@ -246,9 +250,22 @@ def run_evaluation(
     if device.type == "cuda":
         torch.cuda.manual_seed_all(seed)
 
-    pipeline = load_sd_unclip_pipeline(device=device, seed=seed)
-    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
-    logger.info(f"Scheduler: {type(pipeline.scheduler).__name__}")
+    pipeline = None
+    sd_prior_prompts: list[str] = [""]
+    if not dry_run:
+        # Import tardío: dry-run no requiere diffusers/transformers/accelerate instalados.
+        from diffusers import DPMSolverMultistepScheduler
+        from sd_decoder import (
+            SD_PRIOR_PROMPTS,
+            load_sd_unclip_pipeline,
+            reconstruct_from_embedding,
+        )
+        sd_prior_prompts = list(SD_PRIOR_PROMPTS)
+        pipeline = load_sd_unclip_pipeline(device=device, seed=seed)
+        pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+        logger.info(f"Scheduler: {type(pipeline.scheduler).__name__}")
+    else:
+        logger.warning("DRY-RUN activo: SD 2.1 unCLIP NO se carga. Recon = PIL sintético.")
 
     ok = missing_gt = failed = 0
     collage_items: list[tuple[str, Path, Path]] = []
@@ -264,8 +281,11 @@ def run_evaluation(
                 if recon_path.exists():
                     recon_img = Image.open(recon_path).convert("RGB")
                     logger.info(f"[{subject}] ({i}/{len(stems)}) {stem} — recon cacheado")
+                elif dry_run:
+                    recon_img = _dummy_recon_from_embed(emb_row, seed=seed + i)
+                    recon_img.save(recon_path)
                 else:
-                    prompt = SD_PRIOR_PROMPTS[i % len(SD_PRIOR_PROMPTS)]
+                    prompt = sd_prior_prompts[i % len(sd_prior_prompts)]
                     embed_t = emb_row.detach().to(device=device, dtype=pipeline.unet.dtype).unsqueeze(0)
                     recon_img = reconstruct_from_embedding(
                         pipeline,
@@ -346,6 +366,8 @@ def main() -> int:
     ap.add_argument("--empty-cache-every", type=int, default=4,
                     help="Cada N imágenes llama torch.cuda.empty_cache() (0 = off).")
     ap.add_argument("--cpu", action="store_true", help="Fuerza CPU (fp32, lento).")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="Skip SD pipeline load. Usa stub PIL (valida IO y shapes sin diffusers).")
     args = ap.parse_args()
 
     logging.basicConfig(
@@ -376,6 +398,7 @@ def main() -> int:
         dpi=args.dpi,
         grid_rows=args.grid_rows,
         use_cpu=args.cpu,
+        dry_run=args.dry_run,
     )
     return 0 if summary["failed"] == 0 else 1
 
