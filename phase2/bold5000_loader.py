@@ -285,3 +285,45 @@ def load_bold5000_split(
         trial_ids_test=ids_test,
         subject=subject,
     )
+
+
+# ---------------------------------------------------------------------------
+# Utilidades auxiliares (consumidas por el evaluador visual)
+# ---------------------------------------------------------------------------
+
+def get_ordered_test_stems(
+    subject: str,
+    stim_lists_root: Path | None = None,
+    repeated_list_txt: Path | None = None,
+    clip_targets_pt: Path | None = None,
+) -> list[str]:
+    """
+    Devuelve los stems del test set en el MISMO orden de filas que
+    `Split.betas_test` / `Split.clip_test` / `Split.trial_ids_test`.
+
+    Replica exacta de la lógica de `load_bold5000_split`:
+        sorted({Path(s).stem for s in stim_order
+                if Path(s).stem in repeated_stems
+                and Path(s).stem in clip_lut})
+
+    Si se omite algún path, se resuelve desde `config.BOLD5000_CONFIG`. Útil
+    para alinear el output del adapter (embeds_test.pt) con sus estímulos GT
+    sin necesidad de re-correr el entrenamiento.
+    """
+    import config as _config
+
+    cfg = _config.BOLD5000_CONFIG
+    stim_lists_root   = Path(stim_lists_root   or cfg["stim_lists_root"])
+    repeated_list_txt = Path(repeated_list_txt or cfg["repeated_list_txt"])
+    clip_targets_pt   = Path(clip_targets_pt   or cfg["clip_targets_pt"])
+
+    stim_order = _load_stim_order_subject(stim_lists_root, subject)
+    repeated = _load_repeated_list(repeated_list_txt)
+    clip_lut = _build_clip_lookup(clip_targets_pt)
+
+    observed: set[str] = set()
+    for stim in stim_order:
+        stem = Path(stim).stem
+        if stem in repeated and stem in clip_lut:
+            observed.add(stem)
+    return sorted(observed)

@@ -1,0 +1,384 @@
+"""
+===============================================================================
+phase2/visual_evaluator.py — Evaluador Visual Fase 2 (ACECOM · BOLD5000)
+===============================================================================
+
+Pipeline end-to-end para cerrar el loop cualitativo de la tesis:
+
+    embeds_test.pt  (adapter Ridge fMRI→CLIP-ViT-L/14)
+         │
+         ▼
+    SD 2.1 unCLIP (bfloat16, xformers, vae_slicing)
+         │
+         ▼
+    Reconstrucción PNG + GT (BOLD5000 stimuli) → collage lado a lado
+         │
+         ▼
+    Grid agregado para inspección rápida en la tesis
+
+USOS
+----
+    # Por defecto resuelve TODO desde config + env ACECOM_*
+    python -m phase2.visual_evaluator --subject CSI1
+
+    # Solo primeros 16 estímulos, pasos reducidos
+    python -m phase2.visual_evaluator --subject CSI1 --limit 16 --steps 25
+
+    # Override del .pt del adapter
+    python -m phase2.visual_evaluator --subject CSI1 \\
+        --embeds /mnt/scratch/adapter/CSI1/embeds_test.pt
+
+PORTABILIDAD
+------------
+Todas las rutas se derivan de `config.DATA_DIRS` / `config.BOLD5000_CONFIG`,
+controladas por las variables de entorno `ACECOM_*` definidas en config.py:
+
+    ACECOM_BOLD5000_STIMULI_ROOT  → raíz de COCO/ImageNet/Scene
+    ACECOM_PHASE2_OUTPUTS         → raíz donde está adapter/{subject}/
+    ACECOM_EVAL_OUTPUT            → raíz de collages/grids (este script)
+    ACECOM_HF_CACHE               → cache SD 2.1 unCLIP
+
+Ninguna ruta local hardcodeada: corre idéntico en RTX 2070 (dev) y 4070 Ti
+(inferencia remota) con sólo exportar los paths correctos.
+
+VRAM
+----
+- `load_sd_unclip_pipeline` ya activa bf16 + xformers + vae slicing.
+- `reconstruct_from_embedding` corre dentro de `torch.no_grad`.
+- Este script añade: `torch.inference_mode`, `empty_cache` cada K imágenes,
+  embedding trasladado al device una sola vez por trial y liberado tras uso.
+"""
+
+from __future__ import annotations
+
+import argparse
+import gc
+import logging
+import math
+import sys
+import time
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import torch
+from diffusers import DPMSolverMultistepScheduler
+from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import config
+from phase2.bold5000_loader import get_ordered_test_stems
+from sd_decoder import (
+    SD_PRIOR_PROMPTS,
+    load_sd_unclip_pipeline,
+    reconstruct_from_embedding,
+)
+
+logger = logging.getLogger("phase2.visual_evaluator")
+
+VALID_IMG_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+EMBED_DIM = int(config.SD_CONFIG["embedding_dim"])
+
+
+# ---------------------------------------------------------------------------
+# Carga de datos
+# ---------------------------------------------------------------------------
+
+def _default_embeds_path(subject: str) -> Path:
+    """`{phase2_outputs}/adapter/{subject}/embeds_test.pt` — mismo sitio que escribe train_adapter."""
+    return config.DATA_DIRS["phase2_outputs"] / "adapter" / subject / "embeds_test.pt"
+
+
+def load_adapter_embeddings(embed_path: Path) -> tuple[list[int], torch.Tensor]:
+    """
+    Lee el payload dumpeado por `phase2/train_adapter.py`:
+        {"trial_ids": list[int], "embeddings": tensor(N, 768)}
+
+    Acepta también dict {trial_id: tensor(768,)} como fallback legacy.
+    """
+    if not embed_path.exists():
+        raise FileNotFoundError(f"Embeddings no encontrados: {embed_path}")
+
+    blob = torch.load(embed_path, map_location="cpu")
+
+    if isinstance(blob, dict) and "trial_ids" in blob and "embeddings" in blob:
+        trial_ids = list(blob["trial_ids"])
+        emb = blob["embeddings"]
+        if isinstance(emb, torch.Tensor) is False:
+            emb = torch.as_tensor(emb)
+    elif isinstance(blob, dict):
+        trial_ids = list(blob.keys())
+        emb = torch.stack([torch.as_tensor(blob[k]).flatten() for k in trial_ids])
+    else:
+        raise ValueError(f"Formato no reconocido en {embed_path}")
+
+    emb = emb.float()
+    if emb.ndim != 2 or emb.shape[1] != EMBED_DIM:
+        raise ValueError(f"Embeddings shape inválido: {tuple(emb.shape)}, esperado (N, {EMBED_DIM})")
+    if len(trial_ids) != emb.shape[0]:
+        raise ValueError(f"trial_ids ({len(trial_ids)}) != filas de embeddings ({emb.shape[0]})")
+    return trial_ids, emb
+
+
+def align_stems_to_embeddings(subject: str, n_rows: int) -> list[str]:
+    """
+    Re-deriva los stems del test set y verifica alineación con las filas del
+    tensor de embeddings (que siguen el orden de `Split.trial_ids_test` =
+    índices densos 0..N-1 sobre `sorted(test_idx_by_stem)`).
+    """
+    stems = get_ordered_test_stems(subject)
+    if len(stems) != n_rows:
+        raise ValueError(
+            f"Mismatch embeds vs stems test: filas={n_rows} "
+            f"pero get_ordered_test_stems({subject}) devolvió {len(stems)}. "
+            f"Re-entrena el adapter con los mismos paths que resolviste aquí."
+        )
+    return stems
+
+
+# ---------------------------------------------------------------------------
+# Ground Truth lookup
+# ---------------------------------------------------------------------------
+
+def find_ground_truth(stimuli_root: Path, stem: str) -> Path | None:
+    """Recursivo en COCO/ImageNet/Scene: primer match con extensión válida."""
+    for cand in stimuli_root.rglob(f"{stem}.*"):
+        if cand.is_file() and cand.suffix.lower() in VALID_IMG_EXT:
+            return cand
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Render (par individual + grid agregado)
+# ---------------------------------------------------------------------------
+
+def render_pair(gt_path: Path, recon: Image.Image, out_path: Path, stem: str, dpi: int) -> None:
+    gt = Image.open(gt_path).convert("RGB")
+    fig, axes = plt.subplots(1, 2, figsize=(8, 4.4))
+    axes[0].imshow(gt)
+    axes[0].set_title("Estímulo Original", fontsize=11)
+    axes[0].axis("off")
+    axes[1].imshow(recon)
+    axes[1].set_title("Reconstrucción (SD 2.1 unCLIP)", fontsize=11)
+    axes[1].axis("off")
+    fig.suptitle(stem, fontsize=9, y=0.02)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+
+
+def render_grid(
+    items: list[tuple[str, Path, Path]],
+    out_path: Path,
+    max_rows: int,
+    dpi: int,
+) -> None:
+    """
+    items: [(stem, gt_path, recon_path), ...]  (ambas existen en disco)
+
+    Grid 2 columnas (GT | Recon) × N filas. Cap a `max_rows`.
+    """
+    items = items[:max_rows]
+    if not items:
+        logger.warning("Grid vacío, se omite.")
+        return
+
+    n = len(items)
+    fig, axes = plt.subplots(n, 2, figsize=(6, 3 * n))
+    if n == 1:
+        axes = axes.reshape(1, 2)
+
+    for i, (stem, gt_path, recon_path) in enumerate(items):
+        gt = Image.open(gt_path).convert("RGB")
+        rc = Image.open(recon_path).convert("RGB")
+        axes[i, 0].imshow(gt); axes[i, 0].axis("off")
+        axes[i, 1].imshow(rc); axes[i, 1].axis("off")
+        if i == 0:
+            axes[i, 0].set_title("Estímulo Original", fontsize=11)
+            axes[i, 1].set_title("Reconstrucción", fontsize=11)
+        axes[i, 0].set_ylabel(stem, fontsize=7)
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Orquestación
+# ---------------------------------------------------------------------------
+
+def run_evaluation(
+    subject: str,
+    embeds_path: Path,
+    stimuli_root: Path,
+    out_base: Path,
+    num_inference_steps: int,
+    guidance_scale: float,
+    noise_level: int,
+    seed: int,
+    limit: int | None,
+    empty_cache_every: int,
+    dpi: int,
+    grid_rows: int,
+    use_cpu: bool,
+) -> dict:
+    trial_ids, embeds = load_adapter_embeddings(embeds_path)
+    stems = align_stems_to_embeddings(subject, embeds.shape[0])
+
+    if limit is not None:
+        trial_ids = trial_ids[:limit]
+        embeds = embeds[:limit]
+        stems = stems[:limit]
+
+    device = torch.device("cpu" if use_cpu or not torch.cuda.is_available() else "cuda")
+    logger.info(f"device={device} | N={len(stems)} | steps={num_inference_steps} | cfg={guidance_scale}")
+
+    subj_root = out_base / subject
+    recon_dir = subj_root / "reconstructions"
+    pairs_dir = subj_root / "pairs"
+    recon_dir.mkdir(parents=True, exist_ok=True)
+    pairs_dir.mkdir(parents=True, exist_ok=True)
+
+    torch.manual_seed(seed)
+    if device.type == "cuda":
+        torch.cuda.manual_seed_all(seed)
+
+    pipeline = load_sd_unclip_pipeline(device=device, seed=seed)
+    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+    logger.info(f"Scheduler: {type(pipeline.scheduler).__name__}")
+
+    ok = missing_gt = failed = 0
+    collage_items: list[tuple[str, Path, Path]] = []
+    t0 = time.perf_counter()
+
+    with torch.inference_mode():
+        for i, (stem, emb_row) in enumerate(zip(stems, embeds), 1):
+            recon_path = recon_dir / f"{stem}_recon.png"
+            pair_path = pairs_dir / f"{stem}_compare.png"
+            gt_path = find_ground_truth(stimuli_root, stem)
+
+            try:
+                if recon_path.exists():
+                    recon_img = Image.open(recon_path).convert("RGB")
+                    logger.info(f"[{subject}] ({i}/{len(stems)}) {stem} — recon cacheado")
+                else:
+                    prompt = SD_PRIOR_PROMPTS[i % len(SD_PRIOR_PROMPTS)]
+                    embed_t = emb_row.detach().to(device=device, dtype=pipeline.unet.dtype).unsqueeze(0)
+                    recon_img = reconstruct_from_embedding(
+                        pipeline,
+                        embed_t,
+                        prompt=prompt,
+                        num_inference_steps=num_inference_steps,
+                        guidance_scale=guidance_scale,
+                        noise_level=noise_level,
+                        seed=seed,
+                    )
+                    recon_img.save(recon_path)
+                    del embed_t
+
+                if gt_path is None:
+                    missing_gt += 1
+                    logger.warning(f"[{subject}] ({i}/{len(stems)}) GT no hallado: {stem}")
+                else:
+                    render_pair(gt_path, recon_img, pair_path, stem, dpi=dpi)
+                    collage_items.append((stem, gt_path, recon_path))
+                    ok += 1
+                    logger.info(f"[{subject}] ({i}/{len(stems)}) {stem} → {pair_path.name}")
+
+            except Exception as exc:
+                failed += 1
+                logger.error(f"[{subject}] ({i}/{len(stems)}) fallo {stem}: {exc}")
+
+            if device.type == "cuda" and empty_cache_every > 0 and i % empty_cache_every == 0:
+                torch.cuda.empty_cache()
+                gc.collect()
+
+    grid_path = subj_root / f"{subject}_grid.png"
+    render_grid(collage_items, grid_path, max_rows=grid_rows, dpi=dpi)
+
+    dt = time.perf_counter() - t0
+    per_img = dt / max(ok + failed, 1)
+    summary = {
+        "subject": subject,
+        "n_total": len(stems),
+        "ok": ok,
+        "missing_gt": missing_gt,
+        "failed": failed,
+        "seconds": round(dt, 1),
+        "sec_per_img": round(per_img, 2),
+        "out_dir": str(subj_root),
+        "grid": str(grid_path) if grid_path.exists() else None,
+    }
+    logger.info(f"[{subject}] done — {summary}")
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description="Evaluador visual Fase 2: embeds adapter → SD 2.1 unCLIP → GT vs Recon."
+    )
+    ap.add_argument("--subject", required=True, choices=config.BOLD5000_SUBJECTS,
+                    help="Sujeto BOLD5000 (CSI1..CSI4).")
+    ap.add_argument("--embeds", type=Path, default=None,
+                    help="Override del .pt del adapter. "
+                         "Default: {phase2_outputs}/adapter/{subject}/embeds_test.pt")
+    ap.add_argument("--stimuli-root", type=Path, default=None,
+                    help="Override raíz de estímulos BOLD5000. "
+                         "Default: config.BOLD5000_CONFIG['stimuli_images']")
+    ap.add_argument("--out-dir", type=Path, default=None,
+                    help="Raíz de salida. Default: config.DATA_DIRS['eval_output']")
+    ap.add_argument("--limit", type=int, default=None,
+                    help="Cap en # de estímulos (debug).")
+    ap.add_argument("--steps", type=int, default=int(config.SD_CONFIG["num_inference_steps"]))
+    ap.add_argument("--guidance", type=float, default=float(config.SD_CONFIG["guidance_scale"]))
+    ap.add_argument("--noise-level", type=int, default=int(config.SD_CONFIG["noise_level"]))
+    ap.add_argument("--seed", type=int, default=int(config.SD_CONFIG["seed"]))
+    ap.add_argument("--dpi", type=int, default=120)
+    ap.add_argument("--grid-rows", type=int, default=12,
+                    help="Filas máximas en el grid agregado.")
+    ap.add_argument("--empty-cache-every", type=int, default=4,
+                    help="Cada N imágenes llama torch.cuda.empty_cache() (0 = off).")
+    ap.add_argument("--cpu", action="store_true", help="Fuerza CPU (fp32, lento).")
+    args = ap.parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    )
+
+    embeds_path = args.embeds or _default_embeds_path(args.subject)
+    stimuli_root = args.stimuli_root or config.BOLD5000_CONFIG["stimuli_images"]
+    out_base = args.out_dir or config.DATA_DIRS["eval_output"]
+
+    logger.info(f"subject     = {args.subject}")
+    logger.info(f"embeds      = {embeds_path}")
+    logger.info(f"stimuli_root= {stimuli_root}")
+    logger.info(f"out_base    = {out_base}")
+
+    summary = run_evaluation(
+        subject=args.subject,
+        embeds_path=Path(embeds_path),
+        stimuli_root=Path(stimuli_root),
+        out_base=Path(out_base),
+        num_inference_steps=args.steps,
+        guidance_scale=args.guidance,
+        noise_level=args.noise_level,
+        seed=args.seed,
+        limit=args.limit,
+        empty_cache_every=args.empty_cache_every,
+        dpi=args.dpi,
+        grid_rows=args.grid_rows,
+        use_cpu=args.cpu,
+    )
+    return 0 if summary["failed"] == 0 else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -57,8 +57,11 @@ DATA_DIRS: dict[str, Path] = {
     # Artefactos generados por el pipeline (adapter, embeddings, etc.)
     "phase2_outputs":   _env_path("PHASE2_OUTPUTS",        PROJECT_ROOT / "phase2_outputs"),
 
-    # Reconstrucciones SD 2.1 unCLIP
+    # Reconstrucciones SD 2.1 unCLIP (dumps PNG crudos del orquestador)
     "output":           _env_path("OUTPUT_ROOT",           PROJECT_ROOT / "output_sd_reconstructions"),
+
+    # Evaluador visual (collages GT vs reconstrucción, grids y reports)
+    "eval_output":      _env_path("EVAL_OUTPUT",           PROJECT_ROOT / "output_reconstructions_sd21"),
 
     # Cache local de Hugging Face (modelos descargados)
     "models_hf":        _env_path("HF_CACHE",              PROJECT_ROOT / "models_hf"),
@@ -224,6 +227,7 @@ def print_config() -> None:
     print(f"BOLD5000 BIDS:       {DATA_DIRS['bold5000_bids']}")
     print(f"Phase2 outputs:      {DATA_DIRS['phase2_outputs']}")
     print(f"Reconstructions:     {DATA_DIRS['output']}")
+    print(f"Eval output:         {DATA_DIRS['eval_output']}")
     print(f"HF cache:            {DATA_DIRS['models_hf']}")
     print("-" * 72)
     print(f"Subjects:            {BOLD5000_SUBJECTS}")

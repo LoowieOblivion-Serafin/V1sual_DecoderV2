@@ -1,5 +1,5 @@
 # STATE - Fase 2: BOLD5000 + SD 2.1 unCLIP
-**Fecha:** 22 de Abril de 2026
+**Fecha:** 23 de Abril de 2026
 
 **Estado de la Arquitectura (Refactorización en curso):**
 - **Pipeline:** BOLD5000_Stimuli → CLIP ViT-L/14 → Ridge Adapter → SD 2.1 unCLIP-L (frozen).
@@ -12,4 +12,4 @@
 2. **Data Loader (`bold5000_loader.py`):** Implementado y aprobado. Maneja lectura secuencial de estímulos y previene leakage mediante z-score calculado solo en train.
 3. **Gestión de Entornos (Local vs RTX 4070 Ti):** `config.py` refactorizado exitosamente. Utiliza resolución dinámica vía `pathlib` y soporta variables de entorno `ACECOM_*` para anulación en la RTX 4070 Ti. El proyecto es oficialmente portátil.
 4. **Integración Final (Completada):** El legacy `nsd_loader` fue purgado. `train_adapter.py` ahora consume nativamente la data de BOLD5000 configurada.
-5. **Transición a Inferencia:** Siguiente hito es conectar `phase2_run_sd.py` para consumir `embeds_test.pt` generados por el modelo entrenado y relacionar visualmente los resultados con las imágenes originales.
+5. **Transición a Inferencia y Evaluación Visual [EN PRUEBAS]:** El código `visual_evaluator.py` ha sido generado con soporte para multi-entorno. La tarea actual es ejecutar una prueba en seco (dry-run) local para validar el paso de embeddings generados (`embeds_test.pt`) hacia SD 2.1 unCLIP y constatar la correcta formación de los collages visuales antes de la corrida completa.
