@@ -7,7 +7,8 @@ REM   1. Instala dependencias Python (diffusers, transformers, accelerate...).
 REM   2. Extrae embeddings CLIP ViT-L/14 de los 4916 estimulos BOLD5000.
 REM   3. Entrena adapter Ridge fMRI -> CLIP para CSI1, dumpea embeds_test.pt.
 REM   4. Corre visual_evaluator sobre las 113 imagenes del test set (sin
-REM      --limit) con steps default de config.SD_CONFIG (25).
+REM      --limit) forzando --steps 50 para maxima fidelidad en el run
+REM      automatico (config.SD_CONFIG mantiene 25 como default rapido).
 REM
 REM Paths resueltos via config.py + variables ACECOM_*. Override antes de correr:
 REM
@@ -44,7 +45,7 @@ echo.
 echo ==============================================================================
 echo [4/4] visual_evaluator (SD 2.1 unCLIP sobre 113 test set)
 echo ==============================================================================
-python -m phase2.visual_evaluator --subject CSI1 || exit /b 1
+python -m phase2.visual_evaluator --subject CSI1 --steps 50 || exit /b 1
 
 echo.
 echo Production run completo.

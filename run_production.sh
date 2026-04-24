@@ -7,7 +7,8 @@
 #   2. Extrae embeddings CLIP ViT-L/14 de los 4916 estímulos BOLD5000.
 #   3. Entrena adapter Ridge fMRI -> CLIP para CSI1 y dumpea embeds_test.pt.
 #   4. Corre visual_evaluator sobre las 113 imagenes del test set (sin --limit)
-#      con steps default de config.SD_CONFIG (25).
+#      forzando --steps 50 para maxima fidelidad en el run automatico
+#      (config.SD_CONFIG mantiene 25 como default de iteracion rapida).
 #
 # Paths resueltos via config.py + variables de entorno ACECOM_*. Exportar
 # overrides antes de correr si los datos no viven bajo el repo root:
@@ -47,7 +48,7 @@ echo
 echo "=============================================================================="
 echo "[4/4] visual_evaluator (SD 2.1 unCLIP sobre 113 test set)"
 echo "=============================================================================="
-python -m phase2.visual_evaluator --subject CSI1
+python -m phase2.visual_evaluator --subject CSI1 --steps 50
 
 echo
 echo "Production run completo."
