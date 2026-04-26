@@ -43,13 +43,13 @@ REM python -m phase2.extract_vit_features --stimuli-dir "%STIM_DIR%" || exit /b 
 for %%S in (%SUBJECTS%) do (
     echo.
     echo ==============================================================================
-    echo Sujeto %%S — [3/4] train_adapter (Ridge fMRI -^> CLIP)
+    echo Sujeto %%S — [3/4] train_adapter Ridge fMRI -^> CLIP
     echo ==============================================================================
     python -m phase2.train_adapter --mode bold5000 --subject %%S || exit /b 1
 
     echo.
     echo ==============================================================================
-    echo Sujeto %%S — [4/4] visual_evaluator (SD 2.1 unCLIP, 113 test, steps=50)
+    echo Sujeto %%S — [4/4] visual_evaluator SD 2.1 unCLIP, 113 test, steps=50
     echo ==============================================================================
     python -m phase2.visual_evaluator --subject %%S --steps 50 || exit /b 1
 )
