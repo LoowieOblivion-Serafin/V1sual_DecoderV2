@@ -128,7 +128,6 @@ def main() -> int:
         f"TRAIN  R²={m_tr.r2_macro:+.4f}  cos={m_tr.cosine_mean:+.4f}  mse={m_tr.mse:.4f}"
     )
     logger.info(
-    logger.info(
         f"TEST   R²={m_te.r2_macro:+.4f}  cos={m_te.cosine_mean:+.4f}  mse={m_te.mse:.4f}"
     )
 
