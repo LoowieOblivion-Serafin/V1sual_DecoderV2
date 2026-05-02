@@ -44,11 +44,9 @@ SD_CACHE_DIR = config.DATA_DIRS["models_hf"]
 # Negative prompt fijo para classifier-free guidance negativa.
 SD_NEGATIVE_PROMPT = "blurry, noise, abstract, deformed, chaotic, multiple objects"
 
-# Prompts de estabilización semántica.
+# Prompts de estabilización semántica vacíos para no sobreescribir el vector cerebral.
 SD_PRIOR_PROMPTS = [
-    "A clear, high-quality photograph of a natural scene, realistic, defined shapes",
-    "A vivid visual memory, highly detailed, photorealistic perception",
-    "A coherent object or landscape, high resolution, sharp focus, real life",
+    "",
 ]
 
 
