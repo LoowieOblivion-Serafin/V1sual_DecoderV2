@@ -115,6 +115,13 @@ def load_adapter_embeddings(embed_path: Path) -> tuple[list[int], torch.Tensor]:
         raise ValueError(f"Embeddings shape inválido: {tuple(emb.shape)}, esperado (N, {EMBED_DIM})")
     if len(trial_ids) != emb.shape[0]:
         raise ValueError(f"trial_ids ({len(trial_ids)}) != filas de embeddings ({emb.shape[0]})")
+    
+    # Fix: Efecto Shrinkage de Ridge.
+    # Ridge aplasta la magnitud del vector (norma). Debemos restaurar la norma 
+    # para que SD 2.1 unCLIP no ignore el vector considerándolo "vacío".
+    import torch.nn.functional as F
+    emb = F.normalize(emb, p=2, dim=-1) * 12.0 # ~12.0 es la norma promedio de CLIP ViT-L/14
+
     return trial_ids, emb
 
 
