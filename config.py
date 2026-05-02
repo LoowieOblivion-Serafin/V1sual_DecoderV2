@@ -164,9 +164,9 @@ SD_CONFIG: dict[str, object] = {
     "repo_id":             "diffusers/stable-diffusion-2-1-unclip-i2i-l",
     "clip_target_repo":    "openai/clip-vit-large-patch14",
     "embedding_dim":       768,
-    "num_inference_steps": 25,
-    "guidance_scale":      10.0,
-    "noise_level":         0,
+    "num_inference_steps": 75,   # Máxima calidad: U-Net pasa 75 veces refinando la imagen
+    "guidance_scale":      8.0,  # Equilibrio perfecto entre el vector del cerebro y la coherencia visual
+    "noise_level":         15,   # Mayor inyección de ruido para máxima tolerancia al error de la regresión
     "seed":                42,
     "image_size":          768,
 }

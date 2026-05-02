@@ -16,7 +16,7 @@ RTX 3070 (8 GB) o RTX 4070 Ti (12 GB). bf16 + xformers para ~5-6 GB en inferenci
 
 REFERENCIAS HF
 --------------
-- Modelo:   https://huggingface.co/stabilityai/stable-diffusion-2-1-unclip
+- Modelo:   https://huggingface.co/diffusers/stable-diffusion-2-1-unclip-i2i-l
 - Pipeline: diffusers.StableUnCLIPImg2ImgPipeline
 """
 
