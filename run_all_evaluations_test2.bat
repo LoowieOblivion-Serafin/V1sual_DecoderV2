@@ -19,9 +19,9 @@ set SUBJECTS=CSI1 CSI2 CSI3 CSI4
 for %%S in (%SUBJECTS%) do (
     echo.
     echo ==============================================================================
-    echo Sujeto %%S — [4/4] visual_evaluator SD 2.1 unCLIP, 113 test, steps=50
+    echo Sujeto %%S — [4/4] visual_evaluator SD 2.1 unCLIP (config steps)
     echo ==============================================================================
-    python -m phase2.visual_evaluator --subject %%S --steps 50 || exit /b 1
+    python -m phase2.visual_evaluator --subject %%S || exit /b 1
 )
 
 echo.
