@@ -7,7 +7,10 @@ REM para todos los sujetos usando los adaptadores Ridge ya entrenados.
 REM Las imágenes se guardarán en una nueva carpeta independiente.
 
 setlocal enableextensions enabledelayedexpansion
-cd /d "%~dp0"
+cd /d "%~dp0\.."
+
+REM Asegurar que src esta en el PYTHONPATH
+set PYTHONPATH=%cd%\src;%PYTHONPATH%
 
 REM 1. Configurar la carpeta de destino a 'output_reconstruccions_test2'
 REM Asumiendo que D:\scratch es tu base, o usando ruta relativa.

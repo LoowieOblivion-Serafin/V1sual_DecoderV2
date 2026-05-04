@@ -32,7 +32,7 @@ from pathlib import Path
 # RAÍZ DEL PROYECTO
 # ============================================================================
 
-PROJECT_ROOT: Path = Path(__file__).resolve().parent
+PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
 
 
 def _env_path(key: str, default: Path) -> Path:
