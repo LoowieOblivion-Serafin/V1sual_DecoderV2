@@ -40,7 +40,13 @@ from torch.utils.data import DataLoader, TensorDataset
 
 import config
 from .loader import load_split
-from .mindeye_models import MindEyeBackbone, MindEyeLoss
+from .mindeye_models import (
+    MindEyeBackbone,
+    MindEyeLoss,
+    mixco_nce,
+    mixco_sample,
+    soft_clip_loss,
+)
 
 logger = logging.getLogger("phase2.train_mindeye")
 
@@ -142,10 +148,22 @@ def _train_one_epoch(
     device: torch.device,
     use_amp: bool,
     grad_clip: float,
+    contrastive_mode: str | None = None,
+    mixco_beta: float = 0.15,
+    mixco_temp: float = 0.1,
+    softclip_temp: float = 0.125,
 ) -> dict[str, float]:
+    """
+    contrastive_mode:
+        None        → pérdida híbrida MindEyeLoss (InfoNCE + MSE + cos). Default.
+        "bimixco"   → mixup de vóxeles + InfoNCE con etiquetas mezcladas.
+        "softclip"  → SoftCLIP (etiquetas suaves target-target, sin augmentación).
+    Las dos últimas reproducen el schedule de MindEye (lift de pairwise ID).
+    """
     model.train()
     sums = {"loss": 0.0, "loss_nce": 0.0, "loss_mse": 0.0, "loss_cos": 0.0}
     n_batches = 0
+    _zero = torch.zeros((), device=device)
 
     for voxels, target in loader:
         voxels = voxels.to(device, non_blocking=True)
@@ -153,8 +171,20 @@ def _train_one_epoch(
 
         optimizer.zero_grad(set_to_none=True)
         with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=use_amp):
-            pred = model(voxels)
-            losses = loss_fn(pred, target)
+            if contrastive_mode == "bimixco":
+                mixed, perm, lam, _select = mixco_sample(voxels, beta=mixco_beta)
+                pred = model(mixed)
+                loss_main = mixco_nce(pred, target, temp=mixco_temp, perm=perm, lam=lam)
+                losses = {"loss": loss_main, "loss_nce": loss_main.detach(),
+                          "loss_mse": _zero, "loss_cos": _zero}
+            elif contrastive_mode == "softclip":
+                pred = model(voxels)
+                loss_main = soft_clip_loss(pred, target, temp=softclip_temp)
+                losses = {"loss": loss_main, "loss_nce": loss_main.detach(),
+                          "loss_mse": _zero, "loss_cos": _zero}
+            else:
+                pred = model(voxels)
+                losses = loss_fn(pred, target)
 
         losses["loss"].backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip)
@@ -246,6 +276,15 @@ def main() -> int:
     ap.add_argument("--n_blocks", type=int, default=4)
     ap.add_argument("--dropout", type=float, default=0.15)
     ap.add_argument("--seed", type=int, default=42)
+    # --- Augmentación contrastiva estilo MindEye (opt-in) ---
+    ap.add_argument("--mixco", action="store_true",
+                    help="Activa el schedule BiMixCo→SoftCLIP (lift de pairwise ID).")
+    ap.add_argument("--mixco-frac", type=float, default=0.34,
+                    help="Fracción inicial de epochs con BiMixCo; el resto SoftCLIP.")
+    ap.add_argument("--mixco-beta", type=float, default=0.15,
+                    help="Parámetro Beta(α,α) del mixup de vóxeles.")
+    ap.add_argument("--mixco-temp", type=float, default=0.1)
+    ap.add_argument("--softclip-temp", type=float, default=0.125)
     ap.add_argument("--resume", type=Path, default=None,
                     help="Ruta a checkpoint .pt para reanudar.")
     ap.add_argument("--out-dir", type=Path, default=None,
@@ -336,12 +375,28 @@ def main() -> int:
             f"best_pairwise={best_pairwise:.4f}  patience_left={patience_left}"
         )
 
+    # --- Schedule de modo contrastivo (MindEye BiMixCo → SoftCLIP) ---
+    mixco_switch = max(1, int(args.mixco_frac * args.epochs)) if args.mixco else 0
+    if args.mixco:
+        logger.info(
+            f"MixCo activo: epochs 1..{mixco_switch} = BiMixCo, "
+            f"{mixco_switch + 1}..{args.epochs} = SoftCLIP"
+        )
+
     # --- Loop ---
     for epoch in range(start_epoch, args.epochs + 1):
+        if args.mixco:
+            contrastive_mode = "bimixco" if epoch <= mixco_switch else "softclip"
+        else:
+            contrastive_mode = None
         try:
             tr = _train_one_epoch(
                 model, loss_fn, train_loader, optimizer, scheduler,
                 device, use_amp, args.grad_clip,
+                contrastive_mode=contrastive_mode,
+                mixco_beta=args.mixco_beta,
+                mixco_temp=args.mixco_temp,
+                softclip_temp=args.softclip_temp,
             )
         except torch.cuda.OutOfMemoryError:
             torch.cuda.empty_cache()

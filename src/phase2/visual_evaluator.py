@@ -87,12 +87,24 @@ def _default_embeds_path(subject: str) -> Path:
     return config.DATA_DIRS["phase2_outputs"] / "adapter" / subject / "embeds_test.pt"
 
 
-def load_adapter_embeddings(embed_path: Path) -> tuple[list[int], torch.Tensor]:
+def load_adapter_embeddings(
+    embed_path: Path,
+    norm_mode: str = "ridge",
+    norm_scale: float = 12.0,
+) -> tuple[list[int], torch.Tensor]:
     """
-    Lee el payload dumpeado por `phase2/train_adapter.py`:
+    Lee el payload dumpeado por `phase2/train_adapter.py` o `train_mindeye.py`:
         {"trial_ids": list[int], "embeddings": tensor(N, 768)}
 
     Acepta también dict {trial_id: tensor(768,)} como fallback legacy.
+
+    norm_mode controla cómo se ajusta la norma del embedding antes de SD 2.1
+    unCLIP (que ignora vectores de norma ~0):
+        "ridge" : F.normalize · norm_scale. Restaura la magnitud que el
+                  shrinkage de Ridge aplasta. Default histórico.
+        "unit"  : sólo F.normalize (norma 1). Deja que noise_level module.
+        "none"  : sin tocar. RECOMENDADO para embeds de MindEye, cuya magnitud
+                  ya está anclada por el término MSE de la pérdida.
     """
     if not embed_path.exists():
         raise FileNotFoundError(f"Embeddings no encontrados: {embed_path}")
@@ -116,11 +128,16 @@ def load_adapter_embeddings(embed_path: Path) -> tuple[list[int], torch.Tensor]:
     if len(trial_ids) != emb.shape[0]:
         raise ValueError(f"trial_ids ({len(trial_ids)}) != filas de embeddings ({emb.shape[0]})")
     
-    # Fix: Efecto Shrinkage de Ridge.
-    # Ridge aplasta la magnitud del vector (norma). Debemos restaurar la norma 
-    # para que SD 2.1 unCLIP no ignore el vector considerándolo "vacío".
     import torch.nn.functional as F
-    emb = F.normalize(emb, p=2, dim=-1) * 12.0 # ~12.0 es la norma promedio de CLIP ViT-L/14
+    if norm_mode == "ridge":
+        # ~12.0 ≈ norma promedio de CLIP ViT-L/14; restaura el shrinkage de Ridge.
+        emb = F.normalize(emb, p=2, dim=-1) * float(norm_scale)
+    elif norm_mode == "unit":
+        emb = F.normalize(emb, p=2, dim=-1)
+    elif norm_mode == "none":
+        pass
+    else:
+        raise ValueError(f"norm_mode inválido: {norm_mode!r}. Usa 'ridge' | 'unit' | 'none'.")
 
     return trial_ids, emb
 
@@ -235,8 +252,10 @@ def run_evaluation(
     grid_rows: int,
     use_cpu: bool,
     dry_run: bool = False,
+    embed_norm: str = "ridge",
+    embed_scale: float = 12.0,
 ) -> dict:
-    trial_ids, embeds = load_adapter_embeddings(embeds_path)
+    trial_ids, embeds = load_adapter_embeddings(embeds_path, norm_mode=embed_norm, norm_scale=embed_scale)
     stems = align_stems_to_embeddings(subject, embeds.shape[0])
 
     if limit is not None:
@@ -373,6 +392,10 @@ def main() -> int:
     ap.add_argument("--empty-cache-every", type=int, default=4,
                     help="Cada N imágenes llama torch.cuda.empty_cache() (0 = off).")
     ap.add_argument("--cpu", action="store_true", help="Fuerza CPU (fp32, lento).")
+    ap.add_argument("--embed-norm", choices=["ridge", "unit", "none"], default="ridge",
+                    help="Ajuste de norma del embedding. 'none' recomendado para MindEye.")
+    ap.add_argument("--embed-scale", type=float, default=12.0,
+                    help="Escala para --embed-norm ridge (norma objetivo).")
     ap.add_argument("--dry-run", action="store_true",
                     help="Skip SD pipeline load. Usa stub PIL (valida IO y shapes sin diffusers).")
     args = ap.parse_args()
@@ -406,6 +429,8 @@ def main() -> int:
         grid_rows=args.grid_rows,
         use_cpu=args.cpu,
         dry_run=args.dry_run,
+        embed_norm=args.embed_norm,
+        embed_scale=args.embed_scale,
     )
     return 0 if summary["failed"] == 0 else 1
 

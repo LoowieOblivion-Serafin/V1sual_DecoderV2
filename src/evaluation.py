@@ -1,10 +1,10 @@
 """
 ===============================================================================
-EVALUACIÓN CUANTITATIVA DE RECONSTRUCCIONES — Fase 2 (NSD + SD 2.1 unCLIP)
+EVALUACIÓN CUANTITATIVA DE RECONSTRUCCIONES — Fase 2 (BOLD5000 + SD 2.1 unCLIP)
 ===============================================================================
 
-Calcula métricas estándar sobre reconstrucciones SD 2.1 unCLIP frente a
-estímulos COCO referenciados por NSD trial_id.
+Calcula métricas estándar sobre las reconstrucciones SD 2.1 unCLIP frente a
+los estímulos BOLD5000 (COCO/ImageNet/Scene) emparejados por *stem*.
 
 Métricas:
     - SSIM           : similitud estructural
@@ -14,8 +14,20 @@ Métricas:
     - CLIP cosine    : similitud semántica (CLIP ViT-L/14)
     - Pairwise ID    : accuracy 2-vías (Scotti et al. 2023)
 
+Layout de entrada (escrito por `phase2/visual_evaluator.py`):
+
+    {recon_root}/{subject}/reconstructions/{stem}_recon.png
+
+Ground truth: se resuelve por `stem` recorriendo recursivamente el árbol de
+estímulos BOLD5000 (subdirs COCO/ImageNet/Scene).
+
 Uso:
-    py -3.12 evaluation.py --recon-dir output_sd_reconstructions --gt-dir nsd/stimuli
+    py -3.12 -m evaluation --subjects CSI1 CSI2 CSI3 CSI4
+    py -3.12 -m evaluation --subjects CSI1 --recon-dir output_reconstruccions_test2
+
+Nota histórica: la rama NSD fue purgada con el pivote a BOLD5000 (ver
+MIGRATION.md). Toda referencia a `config.NSD_CONFIG` quedó obsoleta y se
+reemplazó por `config.BOLD5000_CONFIG` / `config.BOLD5000_SUBJECTS`.
 """
 
 from __future__ import annotations
@@ -75,7 +87,12 @@ if HAS_TORCH:
         log.warning("transformers no disponible; CLIP cos omitido.")
 
 
-IMG_SIZE = config.SD_CONFIG["image_size"]
+IMG_SIZE = int(config.SD_CONFIG["image_size"])
+VALID_IMG_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+
+# Nombre del subdirectorio y sufijo que produce visual_evaluator.py.
+DEFAULT_RECON_SUBDIR = "reconstructions"
+DEFAULT_RECON_SUFFIX = "_recon.png"
 
 
 @dataclass
@@ -86,51 +103,84 @@ class StimulusPair:
     recon: np.ndarray
 
 
-def load_gt_images(gt_dir: Path) -> Dict[str, np.ndarray]:
-    """Lee PNG/JPG de stimuli como {label: ndarray uint8 HxWx3}."""
-    if not gt_dir.is_dir():
-        raise FileNotFoundError(f"Directorio GT no encontrado: {gt_dir}")
-    out: Dict[str, np.ndarray] = {}
-    for img_path in sorted(gt_dir.glob("*")):
-        if img_path.suffix.lower() not in {".png", ".jpg", ".jpeg"}:
+# ---------------------------------------------------------------------------
+# Resolución de ground truth (BOLD5000: árbol COCO/ImageNet/Scene por stem)
+# ---------------------------------------------------------------------------
+
+def build_gt_index(stimuli_root: Path) -> Dict[str, Path]:
+    """
+    Recorre `stimuli_root` recursivamente una sola vez y mapea {stem: ruta}.
+
+    BOLD5000 guarda los estímulos en subdirectorios (COCO/ImageNet/Scene), por
+    lo que el match contra las reconstrucciones se hace por `stem` (nombre sin
+    extensión), idéntico a `phase2/visual_evaluator.find_ground_truth`.
+    """
+    if not stimuli_root.is_dir():
+        raise FileNotFoundError(f"Directorio de estímulos no encontrado: {stimuli_root}")
+    index: Dict[str, Path] = {}
+    for cand in stimuli_root.rglob("*"):
+        if not cand.is_file() or cand.suffix.lower() not in VALID_IMG_EXT:
             continue
-        out[img_path.stem] = np.asarray(Image.open(img_path).convert("RGB"))
-    log.info("Cargados %d estímulos GT desde %s", len(out), gt_dir)
-    return out
+        # Primer match gana; los stems BOLD5000 son únicos entre subdirs.
+        index.setdefault(cand.stem, cand)
+    log.info("Indexados %d estímulos GT desde %s", len(index), stimuli_root)
+    return index
 
 
-def load_reconstructions(subject: str, recon_root: Path) -> Dict[str, np.ndarray]:
-    """Lee PNG `<subject>_<label>_sd_unclip.png` de `recon_root/<subject>/`."""
-    subject_dir = recon_root / subject
+def load_reconstructions(
+    subject: str,
+    recon_root: Path,
+    subdir: str = DEFAULT_RECON_SUBDIR,
+    suffix: str = DEFAULT_RECON_SUFFIX,
+) -> Dict[str, np.ndarray]:
+    """
+    Lee `{recon_root}/{subject}/{subdir}/{stem}{suffix}` como {stem: ndarray}.
+
+    Compatible con el layout que escribe `visual_evaluator.py`. Si el subdir no
+    existe, intenta leer directamente bajo `{recon_root}/{subject}/` (layout
+    plano legacy).
+    """
+    subject_dir = recon_root / subject / subdir
     if not subject_dir.is_dir():
-        log.warning("No encontrado: %s", subject_dir)
-        return {}
-    suffix = "_sd_unclip.png"
-    prefix = f"{subject}_"
+        fallback = recon_root / subject
+        if fallback.is_dir():
+            log.warning("Subdir %r ausente; uso layout plano %s", subdir, fallback)
+            subject_dir = fallback
+        else:
+            log.warning("No encontrado: %s", subject_dir)
+            return {}
+
     out: Dict[str, np.ndarray] = {}
     for png in sorted(subject_dir.glob(f"*{suffix}")):
         name = png.name
-        if not (name.startswith(prefix) and name.endswith(suffix)):
+        if not name.endswith(suffix):
             continue
-        label = name[len(prefix):-len(suffix)]
-        out[label] = np.asarray(Image.open(png).convert("RGB"))
-    log.info("Sujeto %s: %d reconstrucciones cargadas", subject, len(out))
+        stem = name[: -len(suffix)]
+        if stem:
+            out[stem] = np.asarray(Image.open(png).convert("RGB"))
+    log.info("Sujeto %s: %d reconstrucciones cargadas desde %s", subject, len(out), subject_dir)
     return out
 
 
 def align_pairs(subject: str,
-                stimuli: Dict[str, np.ndarray],
+                gt_index: Dict[str, Path],
                 recons: Dict[str, np.ndarray]) -> List[StimulusPair]:
+    """Empareja recon↔GT por stem, redimensionando ambas a IMG_SIZE."""
     pairs: List[StimulusPair] = []
+    missing = 0
     for label, recon in recons.items():
-        if label not in stimuli:
+        gt_path = gt_index.get(label)
+        if gt_path is None:
+            missing += 1
             continue
-        gt = stimuli[label]
+        gt = np.asarray(Image.open(gt_path).convert("RGB"))
         if gt.shape[:2] != (IMG_SIZE, IMG_SIZE):
             gt = np.asarray(Image.fromarray(gt).resize((IMG_SIZE, IMG_SIZE), Image.BICUBIC))
         if recon.shape[:2] != (IMG_SIZE, IMG_SIZE):
             recon = np.asarray(Image.fromarray(recon).resize((IMG_SIZE, IMG_SIZE), Image.BICUBIC))
         pairs.append(StimulusPair(label=label, subject=subject, gt=gt, recon=recon))
+    if missing:
+        log.warning("Sujeto %s: %d reconstrucciones sin GT por stem.", subject, missing)
     return pairs
 
 
@@ -237,11 +287,11 @@ class PerImageRow:
 
 
 def evaluate_subject(subject: str,
-                     stimuli: Dict[str, np.ndarray],
+                     gt_index: Dict[str, Path],
                      recon_root: Path,
                      models: PerceptualModels) -> Tuple[List[PerImageRow], Dict[str, float]]:
     recons = load_reconstructions(subject, recon_root)
-    pairs = align_pairs(subject, stimuli, recons)
+    pairs = align_pairs(subject, gt_index, recons)
     rows: List[PerImageRow] = []
     clip_sims = clip_similarity(pairs, models)
     for p in pairs:
@@ -306,16 +356,16 @@ def write_summary_csv(summaries: List[Dict[str, float]], path: Path) -> None:
 
 def main(subjects: Iterable[str],
          recon_root: Path,
-         gt_dir: Path) -> None:
+         stimuli_root: Path) -> List[Dict[str, float]]:
     recon_root.mkdir(parents=True, exist_ok=True)
-    stimuli = load_gt_images(gt_dir)
+    gt_index = build_gt_index(stimuli_root)
     models = build_models()
 
     all_rows: List[PerImageRow] = []
     summaries: List[Dict[str, float]] = []
 
     for subject in subjects:
-        rows, summary = evaluate_subject(subject, stimuli, recon_root, models)
+        rows, summary = evaluate_subject(subject, gt_index, recon_root, models)
         if not rows:
             log.warning("Sujeto %s: sin pares evaluables.", subject)
             continue
@@ -331,19 +381,24 @@ def main(subjects: Iterable[str],
 
     if summaries:
         write_summary_csv(summaries, recon_root / "metrics_summary.csv")
+    return summaries
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Evaluación SD 2.1 unCLIP sobre NSD")
+    parser = argparse.ArgumentParser(description="Evaluación SD 2.1 unCLIP sobre BOLD5000")
     parser.add_argument("--subjects", nargs="+",
-                        default=config.NSD_CONFIG["subjects"])
+                        default=list(config.BOLD5000_SUBJECTS),
+                        choices=list(config.BOLD5000_SUBJECTS))
     parser.add_argument("--recon-dir", type=Path,
-                        default=config.DATA_DIRS["output"])
-    parser.add_argument("--gt-dir", type=Path,
-                        default=config.NSD_CONFIG["stimuli_root"])
+                        default=config.DATA_DIRS["eval_output"],
+                        help="Raíz con {subject}/reconstructions/{stem}_recon.png. "
+                             "Default: config.DATA_DIRS['eval_output'].")
+    parser.add_argument("--stimuli-root", type=Path,
+                        default=config.BOLD5000_CONFIG["stimuli_images"],
+                        help="Raíz de estímulos BOLD5000 (COCO/ImageNet/Scene).")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    main(args.subjects, args.recon_dir, args.gt_dir)
+    main(args.subjects, args.recon_dir, args.stimuli_root)

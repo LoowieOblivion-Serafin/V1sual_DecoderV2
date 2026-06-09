@@ -52,11 +52,12 @@ def make_mock_split(
     clip_train_clean = betas_train @ W_true
     clip_test_clean = betas_test @ W_true
 
-    noise_std_train = clip_train_clean.std() / snr
-    noise_std_test = clip_test_clean.std() / snr
+    # `.std()` devuelve float64; castear el escalar evita upcastear los arrays.
+    noise_std_train = np.float32(clip_train_clean.std() / snr)
+    noise_std_test = np.float32(clip_test_clean.std() / snr)
 
-    clip_train = clip_train_clean + rng.standard_normal(clip_train_clean.shape).astype(np.float32) * noise_std_train
-    clip_test = clip_test_clean + rng.standard_normal(clip_test_clean.shape).astype(np.float32) * noise_std_test
+    clip_train = (clip_train_clean + rng.standard_normal(clip_train_clean.shape).astype(np.float32) * noise_std_train).astype(np.float32)
+    clip_test = (clip_test_clean + rng.standard_normal(clip_test_clean.shape).astype(np.float32) * noise_std_test).astype(np.float32)
 
     trial_ids_train = list(range(n_train))
     trial_ids_test = list(range(n_train, n_train + n_test))

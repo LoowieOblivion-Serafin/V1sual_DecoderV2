@@ -289,6 +289,98 @@ class MindEyeLoss(nn.Module):
 
 
 # =============================================================================
+# MixCo / SoftCLIP — augmentación contrastiva estilo MindEye (opt-in)
+# =============================================================================
+#
+# Schedule de MindEye (Scotti et al., 2023), el lift principal de *pairwise ID*
+# en régimen de pocas muestras (exacto caso BOLD5000, ~4.8k trials/sujeto):
+#   - Primer ~1/3 del entrenamiento: BiMixCo (mixup de vóxeles + InfoNCE con
+#     etiquetas duras mezcladas). Regulariza y fuerza geometría del manifold.
+#   - Últimos ~2/3: SoftCLIP (etiquetas suaves = similitud target-target, sin
+#     augmentación). Afina sin el ruido del mixup.
+#
+# Todo el cómputo de logits se hace en float32 (evita saturación bf16); no se
+# usa exp() sobre valores no acotados (log_softmax es estable).
+
+
+def mixco_sample(
+    voxels: torch.Tensor,
+    beta: float = 0.15,
+    s_thresh: float = 0.5,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    BiMixCo: mezcla cada muestra de vóxeles con otra (permutación aleatoria).
+
+    Returns
+    -------
+    mixed  : (B, V) vóxeles mezclados.
+    perm   : (B,)   permutación usada.
+    lam    : (B,)   coeficiente de mezcla por fila (1.0 = fila sin mezclar).
+    select : (B,)   bool, filas efectivamente mezcladas (rand <= s_thresh).
+    """
+    B = voxels.size(0)
+    device = voxels.device
+    perm = torch.randperm(B, device=device)
+    lam = torch.distributions.Beta(beta, beta).sample((B,)).to(device)
+    select = torch.rand(B, device=device) <= s_thresh
+    lam = torch.where(select, lam, torch.ones_like(lam))      # no-select → sin mezcla
+    shape = [B] + [1] * (voxels.dim() - 1)
+    mixed = voxels * lam.view(*shape) + voxels[perm] * (1.0 - lam).view(*shape)
+    return mixed, perm, lam, select
+
+
+def mixco_nce(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    temp: float = 0.1,
+    perm: torch.Tensor | None = None,
+    lam: torch.Tensor | None = None,
+    bidirectional: bool = True,
+) -> torch.Tensor:
+    """
+    InfoNCE con etiquetas suaves de mixup (BiMixCo). Si `perm`/`lam` son None,
+    degenera a InfoNCE estándar bidireccional (positivo = diagonal).
+    """
+    pred_n = F.normalize(pred.float(), dim=-1)
+    targ_n = F.normalize(target.float(), dim=-1)
+    logits = (pred_n @ targ_n.t()) / temp                    # (B, B)
+    B = pred_n.size(0)
+
+    if perm is None or lam is None:
+        labels = torch.arange(B, device=pred_n.device)
+        loss = F.cross_entropy(logits, labels)
+        if bidirectional:
+            loss = 0.5 * (loss + F.cross_entropy(logits.t(), labels))
+        return loss
+
+    probs = torch.diag(lam).clone()                          # (B, B)
+    probs[torch.arange(B, device=pred_n.device), perm] = (1.0 - lam)
+    loss = -(logits.log_softmax(dim=-1) * probs).sum(dim=-1).mean()
+    if bidirectional:
+        loss_t = -(logits.t().log_softmax(dim=-1) * probs.t()).sum(dim=-1).mean()
+        loss = 0.5 * (loss + loss_t)
+    return loss
+
+
+def soft_clip_loss(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    temp: float = 0.125,
+) -> torch.Tensor:
+    """
+    SoftCLIP: las etiquetas suaves son la similitud target↔target (las imágenes
+    parecidas comparten masa de probabilidad). Sin augmentación; fase de afinado.
+    """
+    pred_n = F.normalize(pred.float(), dim=-1)
+    targ_n = F.normalize(target.float(), dim=-1)
+    clip_clip = (targ_n @ targ_n.t()) / temp
+    brain_clip = (pred_n @ targ_n.t()) / temp
+    loss1 = -(brain_clip.log_softmax(dim=-1) * clip_clip.softmax(dim=-1)).sum(dim=-1).mean()
+    loss2 = -(brain_clip.t().log_softmax(dim=-1) * clip_clip.t().softmax(dim=-1)).sum(dim=-1).mean()
+    return 0.5 * (loss1 + loss2)
+
+
+# =============================================================================
 # Smoke test
 # =============================================================================
 
