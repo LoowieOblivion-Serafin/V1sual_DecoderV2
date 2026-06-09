@@ -66,18 +66,28 @@ def test_reconstruction_pipeline_dryrun(mock_ecosystem, tmp_path, monkeypatch):
     assert (subj / "CSI1_grid.png").exists(), "falta el grid agregado"
 
 
-def test_embeddings_loader_renormalizes(mock_ecosystem):
-    """load_adapter_embeddings debe entregar (N, 768) finito y con norma fija."""
+def test_embeddings_loader_norm_modes(mock_ecosystem):
+    """norm_mode 'ridge'/'unit'/'none' producen las normas esperadas; 'none' no toca."""
     import torch
     from phase2.visual_evaluator import load_adapter_embeddings
 
-    trial_ids, emb = load_adapter_embeddings(mock_ecosystem["embeds_test_pt"])
-    assert emb.ndim == 2 and emb.shape[1] == 768
-    assert len(trial_ids) == emb.shape[0]
-    assert torch.isfinite(emb).all()
-    # El fix de shrinkage renormaliza a norma ~12 por fila.
-    norms = emb.norm(dim=-1)
-    assert torch.allclose(norms, torch.full_like(norms, 12.0), atol=1e-3)
+    path = mock_ecosystem["embeds_test_pt"]
+
+    _, emb_ridge = load_adapter_embeddings(path, norm_mode="ridge", norm_scale=12.0)
+    assert emb_ridge.ndim == 2 and emb_ridge.shape[1] == 768
+    assert torch.isfinite(emb_ridge).all()
+    assert torch.allclose(emb_ridge.norm(dim=-1), torch.full((emb_ridge.shape[0],), 12.0), atol=1e-3)
+
+    _, emb_unit = load_adapter_embeddings(path, norm_mode="unit")
+    assert torch.allclose(emb_unit.norm(dim=-1), torch.ones(emb_unit.shape[0]), atol=1e-4)
+
+    # 'none' (nuevo default): la magnitud cruda se preserva tal cual del .pt.
+    raw = torch.load(path, map_location="cpu")["embeddings"].float()
+    _, emb_none = load_adapter_embeddings(path, norm_mode="none")
+    assert torch.allclose(emb_none, raw, atol=1e-5)
+
+    with pytest.raises(ValueError):
+        load_adapter_embeddings(path, norm_mode="bogus")
 
 
 def test_alignment_mismatch_raises(mock_ecosystem, monkeypatch):

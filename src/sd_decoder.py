@@ -91,13 +91,25 @@ def load_sd_unclip_pipeline(
 
     logger.info(f"Cargando SD 2.1 unCLIP desde {repo_id} (dtype={dtype}, cache={cache_dir})")
 
-    pipeline = StableUnCLIPImg2ImgPipeline.from_pretrained(
-        repo_id,
-        torch_dtype=dtype,
-        cache_dir=str(cache_dir),
-        variant="fp16" if dtype == torch.bfloat16 else None,
-        use_safetensors=True,
-    )
+    variant = "fp16" if dtype != torch.float32 else None
+    try:
+        pipeline = StableUnCLIPImg2ImgPipeline.from_pretrained(
+            repo_id,
+            torch_dtype=dtype,
+            cache_dir=str(cache_dir),
+            variant=variant,
+            use_safetensors=True,
+        )
+    except Exception as exc:
+        # Algunos repos (incl. este unCLIP-i2i-l) no publican pesos variant='fp16'.
+        # Reintentar sin variant evita un crash duro en el primer arranque (Maquina B).
+        logger.warning(f"Carga con variant={variant!r} fallo ({exc}); reintento sin variant.")
+        pipeline = StableUnCLIPImg2ImgPipeline.from_pretrained(
+            repo_id,
+            torch_dtype=dtype,
+            cache_dir=str(cache_dir),
+            use_safetensors=True,
+        )
 
     if enable_xformers and device.type == "cuda":
         try:

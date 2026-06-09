@@ -146,7 +146,7 @@ def extract(
             logger.info(f"{n_done}/{len(pending_idx)}  {ips:.1f} img/s  ETA {eta/60:.1f}min")
 
     _save(out_path, model_id, rel_files, already_done)
-    logger.info(f"Listo. {len(already_done)} embeddings → {out_path}")
+    logger.info(f"Listo. {len(already_done)} embeddings -> {out_path}")
     return {"filenames": rel_files, "embeddings": torch.stack([already_done[f] for f in rel_files if f in already_done])}
 
 

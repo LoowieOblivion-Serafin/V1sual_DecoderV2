@@ -67,7 +67,7 @@ def _build_loader_kwargs(args: argparse.Namespace) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Entrena adapter Ridge fMRI→CLIP-ViT-L/14 (BOLD5000)"
+        description="Entrena adapter Ridge fMRI->CLIP-ViT-L/14 (BOLD5000)"
     )
     ap.add_argument(
         "--mode",
@@ -85,7 +85,7 @@ def main() -> int:
         "--alpha",
         type=float,
         default=60_000.0,
-        help="Regularización Ridge. p≫n ⇒ alpha grande (default 6e4).",
+        help="Regularizacion Ridge. p>>n => alpha grande (default 6e4).",
     )
     ap.add_argument(
         "--out-dir",
@@ -156,8 +156,8 @@ def main() -> int:
     embeds_path = out_dir / "embeds_test.pt"
     torch.save(payload, embeds_path)
 
-    logger.info(f"Adapter     → {adapter_path}")
-    logger.info(f"Embeds test → {embeds_path}  shape={tuple(embeds_test.shape)}")
+    logger.info(f"Adapter     -> {adapter_path}")
+    logger.info(f"Embeds test -> {embeds_path}  shape={tuple(embeds_test.shape)}")
     return 0
 
 

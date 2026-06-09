@@ -261,7 +261,7 @@ def _infer_test_embeddings(
 # ---------------------------------------------------------------------------
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Entrena MindEye backbone fMRI→CLIP ViT-L/14")
+    ap = argparse.ArgumentParser(description="Entrena MindEye backbone fMRI->CLIP ViT-L/14")
     ap.add_argument("--subject", choices=list(config.BOLD5000_SUBJECTS), default="CSI1")
     ap.add_argument("--epochs", type=int, default=150)
     ap.add_argument("--batch_size", type=int, default=64,
@@ -278,11 +278,11 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=42)
     # --- Augmentación contrastiva estilo MindEye (opt-in) ---
     ap.add_argument("--mixco", action="store_true",
-                    help="Activa el schedule BiMixCo→SoftCLIP (lift de pairwise ID).")
+                    help="Activa el schedule BiMixCo->SoftCLIP (lift de pairwise ID).")
     ap.add_argument("--mixco-frac", type=float, default=0.34,
                     help="Fracción inicial de epochs con BiMixCo; el resto SoftCLIP.")
     ap.add_argument("--mixco-beta", type=float, default=0.15,
-                    help="Parámetro Beta(α,α) del mixup de vóxeles.")
+                    help="Parametro Beta(a,a) del mixup de voxeles.")
     ap.add_argument("--mixco-temp", type=float, default=0.1)
     ap.add_argument("--softclip-temp", type=float, default=0.125)
     ap.add_argument("--resume", type=Path, default=None,
@@ -404,7 +404,7 @@ def main() -> int:
                 logger.error("OOM con batch_size<=32 — abortando.")
                 raise
             new_bs = max(32, batch_size // 2)
-            logger.warning(f"OOM en epoch {epoch}. batch_size {batch_size} → {new_bs}. Reintentando.")
+            logger.warning(f"OOM en epoch {epoch}. batch_size {batch_size} -> {new_bs}. Reintentando.")
             batch_size = new_bs
             train_loader, val_loader = _build_loaders(
                 split, batch_size, args.num_workers, pin_memory=use_cuda
@@ -455,7 +455,7 @@ def main() -> int:
             f"epoch {epoch:03d}/{args.epochs}  lr={lr_now:.2e}  "
             f"train_loss={tr['loss']:.4f} (nce={tr['loss_nce']:.4f}) | "
             f"val_loss={val['loss']:.4f}  pairwise={val['pairwise_acc']:.4f}  "
-            f"{'★ best' if improved else f'patience={patience_left}'}"
+            f"{'* best' if improved else f'patience={patience_left}'}"
         )
 
         if patience_left <= 0:
@@ -486,9 +486,9 @@ def main() -> int:
     }
     torch.save(payload, embeds_path)
 
-    logger.info(f"Best ckpt    → {ckpt_best_path}")
-    logger.info(f"Metrics      → {metrics_path}")
-    logger.info(f"Embeds test  → {embeds_path}  shape={tuple(embeds_test.shape)}")
+    logger.info(f"Best ckpt    -> {ckpt_best_path}")
+    logger.info(f"Metrics      -> {metrics_path}")
+    logger.info(f"Embeds test  -> {embeds_path}  shape={tuple(embeds_test.shape)}")
     return 0
 
 

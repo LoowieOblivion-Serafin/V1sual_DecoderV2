@@ -41,21 +41,36 @@ py -3.12 -m phase2.train_mindeye --subject CSI1 --epochs 150 --batch_size 64 --m
 régimen de pocas muestras — exactamente BOLD5000 (~4.8k trials/sujeto). Todo el
 cómputo de logits va en float32 (estable en bf16, sin `exp()` no acotado).
 
-### 2.2 Norma del embedding configurable
+### 2.2 Norma del embedding configurable — **default cambiado a `none`**
 `src/phase2/visual_evaluator.py`: `--embed-norm {ridge,unit,none}` + `--embed-scale`.
 
-El `F.normalize(emb)*12.0` hardcodeado era un parche para el *shrinkage* de
-Ridge. Para embeds de MindEye, cuya magnitud ya está anclada por el término MSE
-de la pérdida, ese reescalado borra información per-muestra que `noise_level`
-de unCLIP debería modular.
+**Por qué `none` es ahora el default.** `extract_vit_features.py` guarda los
+targets CLIP **sin L2-normalizar** (`image_embeds` crudos). MindEye ancla su
+salida a esa magnitud (término MSE), y SD 2.1 unCLIP espera recibir el
+`image_embeds` CLIP en su escala cruda (su `image_normalizer` ya resta media /
+divide std internamente). El `F.normalize(emb)*12.0` hardcodeado (parche para el
+*shrinkage* de Ridge) **distorsionaba esa escala** y degradaba la reconstrucción.
 
 ```bash
-# MindEye: dejar la norma cruda
-py -3.12 -m phase2.visual_evaluator --subject CSI1 --embed-norm none
+# MindEye (default): norma cruda
+py -3.12 -m phase2.visual_evaluator --subject CSI1
+# Legacy adapter Ridge (norma aplastada): restaurar escala
+py -3.12 -m phase2.visual_evaluator --subject CSI1 --embed-norm ridge
 ```
 
-> Ablation pendiente en Máquina B: `ridge` vs `none` × `noise_level ∈ {0,15}`.
+> Ablation pendiente en Máquina B: `none` vs `ridge` × `noise_level ∈ {0,15}`.
 > Reportar pairwise ID y LPIPS por celda.
+
+### 2.3 Robustez de carga SD 2.1 unCLIP
+`src/sd_decoder.py`: `load_sd_unclip_pipeline` ya no asume que el repo publica
+pesos `variant="fp16"`. Si la carga con variant falla, reintenta sin variant
+(evita un crash duro en el primer arranque de la Máquina B).
+
+### 2.4 Logs ASCII-safe (Windows cp1252)
+Los glyphs `→`/`★` en mensajes de log/argparse provocaban `UnicodeEncodeError`
+en consolas cp1252 (Windows) y abortaban la reconstrucción a media corrida.
+Reemplazados por ASCII (`->`, `*`) en todos los scripts del flujo. Además
+`exe/ejecutable.bat` fija `chcp 65001` + `PYTHONIOENCODING=utf-8`.
 
 ---
 
