@@ -9,6 +9,10 @@ REM Las imágenes se guardarán en una nueva carpeta independiente.
 setlocal enableextensions enabledelayedexpansion
 cd /d "%~dp0\.."
 
+REM Consola en UTF-8: evita UnicodeEncodeError al loguear (Windows cp1252).
+chcp 65001 >nul
+set PYTHONIOENCODING=utf-8
+
 REM Asegurar que src esta en el PYTHONPATH
 set PYTHONPATH=%cd%\src;%PYTHONPATH%
 

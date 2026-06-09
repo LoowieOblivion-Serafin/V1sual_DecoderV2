@@ -252,7 +252,7 @@ def run_evaluation(
     grid_rows: int,
     use_cpu: bool,
     dry_run: bool = False,
-    embed_norm: str = "ridge",
+    embed_norm: str = "none",
     embed_scale: float = 12.0,
 ) -> dict:
     trial_ids, embeds = load_adapter_embeddings(embeds_path, norm_mode=embed_norm, norm_scale=embed_scale)
@@ -332,7 +332,7 @@ def run_evaluation(
                     render_pair(gt_path, recon_img, pair_path, stem, dpi=dpi)
                     collage_items.append((stem, gt_path, recon_path))
                     ok += 1
-                    logger.info(f"[{subject}] ({i}/{len(stems)}) {stem} → {pair_path.name}")
+                    logger.info(f"[{subject}] ({i}/{len(stems)}) {stem} -> {pair_path.name}")
 
             except Exception as exc:
                 failed += 1
@@ -368,7 +368,7 @@ def run_evaluation(
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Evaluador visual Fase 2: embeds adapter → SD 2.1 unCLIP → GT vs Recon."
+        description="Evaluador visual Fase 2: embeds adapter -> SD 2.1 unCLIP -> GT vs Recon."
     )
     ap.add_argument("--subject", required=True, choices=config.BOLD5000_SUBJECTS,
                     help="Sujeto BOLD5000 (CSI1..CSI4).")
@@ -392,8 +392,10 @@ def main() -> int:
     ap.add_argument("--empty-cache-every", type=int, default=4,
                     help="Cada N imágenes llama torch.cuda.empty_cache() (0 = off).")
     ap.add_argument("--cpu", action="store_true", help="Fuerza CPU (fp32, lento).")
-    ap.add_argument("--embed-norm", choices=["ridge", "unit", "none"], default="ridge",
-                    help="Ajuste de norma del embedding. 'none' recomendado para MindEye.")
+    ap.add_argument("--embed-norm", choices=["ridge", "unit", "none"], default="none",
+                    help="Ajuste de norma del embedding. Default 'none': los targets "
+                         "CLIP son crudos (sin L2) y SD unCLIP espera esa escala. "
+                         "Usa 'ridge' solo con el adapter Ridge legacy (shrinkage).")
     ap.add_argument("--embed-scale", type=float, default=12.0,
                     help="Escala para --embed-norm ridge (norma objetivo).")
     ap.add_argument("--dry-run", action="store_true",

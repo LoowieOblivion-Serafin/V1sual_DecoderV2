@@ -115,7 +115,7 @@ def run_subject(
             )
             img.save(out_path)
             saved += 1
-            logger.info(f"[{subject_id}] ({idx}/{len(items)}) {trial_id} → {out_path.name}")
+            logger.info(f"[{subject_id}] ({idx}/{len(items)}) {trial_id} -> {out_path.name}")
         except Exception as exc:
             logger.error(f"[{subject_id}] Fallo en {trial_id}: {exc}")
             continue

@@ -156,7 +156,7 @@ def run(
         try:
             _render_pair(gt_path, recon_path, out_path, stem, dpi=dpi)
             ok += 1
-            logger.info(f"[{subject}] ({i}/{len(pairs)}) {stem} → {out_path.name}")
+            logger.info(f"[{subject}] ({i}/{len(pairs)}) {stem} -> {out_path.name}")
         except Exception as exc:
             failed += 1
             logger.error(f"[{subject}] ({i}/{len(pairs)}) fallo {stem}: {exc}")
@@ -212,7 +212,7 @@ def main() -> int:
 
     logger.info(
         f"[{args.subject}] done — ok={ok} missing_gt={missing} failed={failed} "
-        f"→ {out_dir}"
+        f"-> {out_dir}"
     )
     return 0 if failed == 0 else 1
 
