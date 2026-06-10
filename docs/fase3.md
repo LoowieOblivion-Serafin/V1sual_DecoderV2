@@ -126,3 +126,44 @@ py -3.12 -m pytest        # 24 tests, ~13 s
 **Flujo de trabajo Máquina A → B:** se codifica y testea aquí (mock, CPU), se
 `git push`; la Máquina B (RTX 4070 Ti) hace `git pull` y corre la reconstrucción
 real (`exe/ejecutable.bat`) + `compare_subjects` + `evaluation`.
+
+---
+
+## 6. Escalera de ablación (corrida final en RTX 4070 Ti)
+
+Narrativa de publicación: **Ridge Lineal → Ridge Estocástico → MindEye**, midiendo
+cuánto cierra el Modality Gap por unidad de cómputo. Estas tres corridas llenan
+las Tablas 7.1–7.4 del documento (`AlvaroTaipe_Plantilla/main.tex`), hoy en TBD.
+
+| Rung | Módulo | Embeds | Costo |
+|---|---|---|---|
+| Ridge Lineal (diagnóstico) | `phase2/train_adapter.py` | crudos | cerrado, segundos |
+| **Ridge Estocástico (contribución)** | `phase2/adapter_ridge_stoch.py` | `ê=Xβ+σξ`, renorm a esfera | +1 hiperparam σ |
+| MindEye (techo) | `phase2/train_mindeye.py` | MLP residual + InfoNCE | entrenamiento profundo |
+
+Protocolo por sujeto (CSI1–CSI4):
+
+```bash
+# 0) targets CLIP (una vez) + Ridge lineal
+py -3.12 -m phase2.extract_vit_features --stimuli-dir <stimuli> --out phase2_outputs/clip_targets/bold5000_vitL14.pt
+py -3.12 -m phase2.train_adapter      --mode bold5000 --subject CSI1   # -> adapter/CSI1/embeds_test.pt
+# 1) Ridge Estocástico (calibra σ por pairwise en validación)
+py -3.12 -m phase2.adapter_ridge_stoch --mode bold5000 --subject CSI1  # -> adapter_stoch/CSI1/embeds_test.pt
+# 2) MindEye
+py -3.12 -m phase2.train_mindeye      --subject CSI1 --epochs 150 --mixco  # -> mindeye/CSI1/embeds_test.pt
+
+# 3) Reconstrucción por rung (un eval-dir distinto por variante; --embed-norm none: el adapter ya normaliza)
+py -3.12 -m phase2.visual_evaluator --subject CSI1 --embeds phase2_outputs/adapter/CSI1/embeds_test.pt        --out-dir out_ridge       --embed-norm none
+py -3.12 -m phase2.visual_evaluator --subject CSI1 --embeds phase2_outputs/adapter_stoch/CSI1/embeds_test.pt  --out-dir out_stoch       --embed-norm none
+py -3.12 -m phase2.visual_evaluator --subject CSI1 --embeds phase2_outputs/mindeye/CSI1/embeds_test.pt        --out-dir out_mindeye     --embed-norm none
+
+# 4) Métricas por rung (llena Tablas 7.1–7.3) y comparador cross-subject (Fig. agregada)
+py -3.12 -m evaluation --subjects CSI1 CSI2 CSI3 CSI4 --recon-dir out_stoch
+py -3.12 -m phase2.compare_subjects --eval-dir out_stoch --limit 8
+```
+
+**Nota de norma:** el Ridge Estocástico renormaliza a la hiperesfera unidad por
+construcción (eq 6.3), así que `visual_evaluator --embed-norm none` evita
+doble-normalizar. Si la norma unidad resulta demasiado pequeña para unCLIP
+(síntoma: salidas genéricas), ablar con `adapter_ridge_stoch --embed-scale 12`
+(coloca el vector en la escala cruda de CLIP ViT-L/14). Reportar ambos en la tesis.
