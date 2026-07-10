@@ -1,0 +1,142 @@
+\chapter{Desarrollo de la Investigación}
+
+En este capítulo pongo sobre la mesa los dos adapters fMRI$\rightarrow$CLIP que uso, explico cómo se enganchan a Stable Diffusion 2.1 unCLIP, detallo el procedimiento de inferencia y dejo por escrito cómo se arma cada métrica de evaluación.
+
+\section{Idea general del adapter}
+
+En esencia, el adapter es un mapa $f_{\theta}:\mathbb{R}^{V}\rightarrow\mathbb{R}^{768}$: recibe los vóxeles de la máscara cortical visual y devuelve un embedding que vive en el espacio nativo de CLIP ViT-L/14. Lo entreno (o lo calibro) sobre pares (vóxeles, embedding CLIP objetivo). Apuntar de frente a ese espacio nativo del encoder visual me ahorra la traducción cross-encoder que se me cayó en la Fase~1.
+
+Trabajo con dos versiones del adapter:
+\begin{itemize}
+\item[•] Ridge Lineal, la línea base: solución cerrada, sin más parámetro que el $\lambda$ de Tikhonov.
+\item[•] Ridge Estocástico, una extensión inspirada en MindEye y MindEye2: mete ruido Gaussiano calibrado sobre el predictor lineal y luego renormaliza el embedding.
+\end{itemize}
+
+No salté de golpe a un MLP residual contrastivo completo, al estilo del MindEye original, y lo hice a propósito. Antes de pagar el costo de entrenar un adapter no lineal con InfoNCE bidireccional, quería medir cuánto del fracaso del Ridge Lineal se explica solo porque el embedding llega sin variabilidad al decodificador. Justamente eso es lo que el Ridge Estocástico deja aislar.
+
+\section{Representación CLIP en el desarrollo}
+
+Los embeddings objetivo $\mathbf{e}=\phi_{\mathrm{CLIP}}(\mathbf{I})$ los precalculo una sola vez sobre los 5254 estímulos de BOLD5000 y los guardo en \texttt{embeddings\_vit\_l14.npy}. Así no tengo que volver a pasar el encoder por cada trial y, de paso, dejo fija la referencia contra la que mido cualquier adapter.
+
+\section{Difusión latente como decodificador}
+
+Tanto el UNet $\epsilon_{\theta}$ como el VAE de SD~2.1 unCLIP se quedan congelados. La única señal positiva que entra es el embedding que predice el adapter, por la vía de \texttt{image\_embeds}. El negative prompt sí pasa por el encoder de texto, y lo dejo fijo en \texttt{"blurry, distorted, lowres, watermark, text"}. Al mantener vacío el prompt positivo corto cualquier fuga semántica por texto y me aseguro de que toda la señal positiva venga del cerebro.
+
+\section{Classifier-Free Guidance}
+
+El factor CFG $w=8.0$ realza el embedding predicho frente al incondicional. Por debajo de $w=5$ todo sale borroso; por encima de $w=11$ la imagen se satura y las alucinaciones tipográficas pasan a ser el fallo dominante. Barriendo $w\in\{5,7,8,10,13\}$ me quedó claro que $w=8.0$ es el punto de equilibrio entre fidelidad semántica y artefactos de saturación bajo el régimen Ridge.
+
+\section{Pivote OpenNeuro y reentreno nativo}
+
+Otra decisión metodológica que pesó fue dejar de lado las features precalculadas a 512 dimensiones y reentrenar el adapter directo sobre los vóxeles crudos, apuntando al espacio nativo de 768 de ViT-L/14. Con eso resuelvo el problema de traducción cross-encoder que ya señalé en el Cap.~3.
+
+\section{Ingeniería de VRAM (AMP bf16 + xformers)}
+
+\begin{itemize}
+\item[•] bf16 + AMP~\cite{micikevicius2018amp,kobayashi2017bf16}: mantiene el rango dinámico de fp32 y no me aparecen NaN en las restas centradas.
+\item[•] xformers: atención memory-efficient que baja cerca del 40\% el pico de VRAM del UNet de SD~2.1 unCLIP.
+\item[•] Gradient checkpointing (opcional): cambia cómputo por memoria si más adelante pruebo un adapter más grande.
+\item[•] Flujo dev/prod: la máquina local (RTX 2070, 8~GB) la uso para escribir código y hacer \texttt{git push}; la remota (RTX 4070 Ti, 12~GB) hace \texttt{git pull} y corre entrenamiento e inferencia. En la local no se entrena.
+\end{itemize}
+
+\section{Formulación de los adapters}
+
+Sea $\mathbf{x}\in\mathbb{R}^{V}$ el vector de actividad fMRI sobre los $V$ vóxeles de la máscara cortical visual y $\mathbf{e}=\phi_{\mathrm{CLIP}}(\mathbf{I})\in\mathbb{R}^{D}$, con $D=768$, el embedding CLIP del estímulo $\mathbf{I}$.
+
+\subsection{Adapter base: Ridge Lineal}
+
+Solución cerrada, con $\lambda$ elegido por validación cruzada de 5 folds:
+\begin{equation}
+\theta^{*}_{\mathrm{Ridge}} = \left(\mathbf{X}^{\top}\mathbf{X} + \lambda\mathbf{I}_{V}\right)^{-1}\mathbf{X}^{\top}\mathbf{E}.
+\end{equation}
+\myequations{Solución cerrada Ridge Lineal}
+
+Es la línea base. Una vez corregidos los bugs previos ---el shrinkage en la normalización por sesión y el prompt vacío en la dirección incondicional de CFG---, el Ridge Lineal me sirve de diagnóstico cuantitativo del fracaso del mapeo lineal puro (Cap.~7).
+
+\subsection{Adapter principal: Ridge Estocástico}
+
+El predictor estocástico agarra la salida del Ridge Lineal y, antes de normalizar, le suma una perturbación Gaussiana isotrópica:
+\begin{equation}
+\hat{\mathbf{e}}_{\mathrm{stoch}} = \mathbf{X}\,\hat{\boldsymbol{\beta}}_{\mathrm{Ridge}} + \sigma\,\boldsymbol{\xi}, \qquad \boldsymbol{\xi}\sim\mathcal{N}(\mathbf{0},\mathbf{I}_{D}),
+\end{equation}
+\myequations{Predictor Ridge Estocástico}
+\begin{equation}
+\hat{\mathbf{u}}_{\mathrm{stoch}} = \frac{\hat{\mathbf{e}}_{\mathrm{stoch}}}{\|\hat{\mathbf{e}}_{\mathrm{stoch}}\|_{2}}.
+\end{equation}
+\myequations{Renormalización sobre hiperesfera unidad}
+
+El único hiperparámetro que se suma es $\sigma$. Lo ajusto en validación maximizando la pairwise accuracy sobre los embeddings CLIP de los estímulos vistos, no minimizando el MSE; de esa forma el criterio de calibración queda pegado a la métrica final de discriminación.
+
+\subsection{Hiperparámetros}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{| l | c |}
+\hline
+\textbf{Hiperparámetro} & \textbf{Valor} \\ \hline
+$\lambda$ (Ridge Lineal) & barrido $\{10^{-1},\dots,10^{4}\}$, CV~5 \\ \hline
+$\sigma$ (Ridge Estocástico) & barrido $\{0.05,0.1,0.2,0.4,0.8\}$ \\ \hline
+Renormalización & $L_{2}$ sobre hiperesfera unidad \\ \hline
+Precisión & bf16 (AMP) en inferencia GPU \\ \hline
+Semilla & 42 \\ \hline
+\end{tabular}
+\caption[Hiperparámetros de los adapters]{Configuración de los dos adapters utilizados en esta tesis.}
+\label{table:adapters_hparams}
+\end{table}
+
+\section{Integración con Stable Diffusion 2.1 unCLIP}
+
+El pipeline \texttt{StableUnCLIPImg2ImgPipeline} recibe el embedding predicho $\hat{\mathbf{e}}=f_{\theta}(\mathbf{x})$ por \texttt{image\_embeds} y se salta el encoder visual interno. De este modo, la única señal de condicionamiento positivo sale del cerebro. El negative prompt fijo entra solo por el encoder de texto, y su papel es habilitar la CFG negativa.
+
+\subsection{Hiperparámetros del scheduler}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{| l | c |}
+\hline
+\textbf{Hiperparámetro} & \textbf{Valor} \\ \hline
+Scheduler & DPMSolverMultistepScheduler~\cite{lu2022dpmsolver} \\ \hline
+Pasos de inferencia & 75 \\ \hline
+Guidance scale (CFG) & 8.0 \\ \hline
+Noise level & 0 \\ \hline
+Resolución de salida & $768\times768$ \\ \hline
+Precisión & bf16 + \texttt{xformers} \\ \hline
+Negative prompt & \texttt{"blurry, distorted, lowres, watermark, text"} \\ \hline
+Positive prompt & vacío (sólo \texttt{image\_embeds}) \\ \hline
+Semilla & 42 \\ \hline
+\end{tabular}
+\caption[Configuración inferencia SD 2.1 unCLIP]{Hiperparámetros utilizados en la inferencia con el embedding predicho por el adapter.}
+\label{table:sd_hparams}
+\end{table}
+
+\section{Procedimiento de inferencia}
+
+\begin{lstlisting}[language=Python, caption=Inferencia por trial (Ridge Estocástico), label={lst:infer}, numbers=left]
+e_lin   = X @ beta_ridge                       # (1, 768)
+xi      = np.random.randn(*e_lin.shape) * sigma
+e_stoch = e_lin + xi
+e_stoch = e_stoch / np.linalg.norm(e_stoch)    # renormalizado
+image = pipeline(
+    image_embeds=torch.tensor(e_stoch).cuda(),
+    prompt="",                                  # sin texto positivo
+    negative_prompt=NEGATIVE_PROMPT,
+    num_inference_steps=75,
+    guidance_scale=8.0,
+    noise_level=0,
+    generator=torch.Generator("cuda").manual_seed(42),
+).images[0]
+\end{lstlisting}
+
+\section{Desarrollo de las métricas de evaluación}
+
+A cada adapter (Ridge Lineal, Ridge Estocástico) y al baseline previo (VQGAN+VGG, que va solo como referencia histórica) le aplico las seis métricas del Cap.~2. Los resultados salen por \texttt{evaluation.py} en dos formatos: un CSV (filas = trials, columnas = métricas) y un HTML con gráficos:
+
+\begin{itemize}
+\item[•] Histograma SSIM por sujeto.
+\item[•] Scatter CLIP-cos vs.\ LPIPS.
+\item[•] Boxplot pairwise-ID por variante.
+\item[•] Reconstrucciones cualitativas en grid $5\times 5$ (gt $\mid$ rec).
+\end{itemize}
+
+\afterpage{\blankpage}
+

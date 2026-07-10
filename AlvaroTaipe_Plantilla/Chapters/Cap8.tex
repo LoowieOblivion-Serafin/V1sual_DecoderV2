@@ -1,0 +1,74 @@
+\chapter{Conclusiones}
+
+En este capítulo se recapitulan los aspectos técnicos y científicos del trabajo, se contrastan 
+las hipótesis del Cap.~1 con lo que quedó verificado en el Cap.~7 y se resumen los aportes.
+
+\section{Síntesis de aportes}
+
+\begin{itemize}
+\item[•] Se levantó un pipeline funcional de reconstrucción visual desde fMRI sobre BOLD5000, 
+dejando atrás el stack histórico VQGAN+VGG y montando en su lugar Stable Diffusion 2.1 unCLIP 
+condicionado por embeddings nativos de CLIP ViT-L/14.
+\item[•] Una vez corregidos los bugs previos (el shrinkage en la normalización por sesión y el 
+prompt vacío en la dirección incondicional de CFG), se documentó que el fallo del Ridge Lineal sobre 
+CLIP ViT-L/14 es estructural y no de hiperparámetros: la linealidad no alcanza para proyectar la 
+organización jerárquica no lineal del córtex visual sobre el manifold curvo de CLIP, y SD~2.1 
+unCLIP responde a ese embedding OOD con alucinación tipográfica como modo dominante.
+\item[•] Diseñé, formalicé y programé el adapter Ridge Estocástico, inspirado en MindEye y 
+MindEye2 pero sin el entrenamiento contrastivo completo. Toma la salida del Ridge Lineal, le 
+suma ruido Gaussiano calibrado y renormaliza sobre la hiperesfera unidad. Su único hiperparámetro 
+extra, $\sigma$, lo calibro en validación por pairwise accuracy. La validación cuantitativa final 
+queda a la espera de la corrida en la máquina remota RTX~4070~Ti.
+\item[•] Dejé formalizada la complejidad combinatoria de elegir el subconjunto óptimo de vóxeles 
+(3-Partition, $NP$-completo en sentido fuerte). Eso justifica usar la partición biológica 
+jerárquica de BOLD5000 como sustituto tratable y me permite reservar la formulación submodular y 
+sus aproximaciones $1-1/e$ para la extensión a BCI en tiempo real.
+\item[•] La inyección directa por \texttt{image\_embeds} mantiene el rigor del experimento porque 
+elimina las fugas semánticas por el prompt de texto: las alucinaciones que aparecen con el Ridge 
+Lineal vienen, sin discusión, del embedding del adapter y no del encoder de texto.
+\item[•] Y desde el lado de la ingeniería mostré que un pipeline a la altura del SOTA entra en una 
+GPU de consumo (12~GB) con bf16, AMP, \texttt{xformers} y gradient checkpointing opcional.
+\end{itemize}
+
+\section{Validación de hipótesis}
+
+\begin{itemize}
+\item[H1.] Ridge Lineal fMRI$\rightarrow$CLIP-ViT-L/14 estructuralmente insuficiente. Queda 
+respaldada de forma cualitativa por las Figuras del Cap.~7 (alucinación tipográfica sistemática 
+sobre objetos categóricos, ya con los bugs corregidos). Falta la cuantificación final del Ridge 
+Lineal sobre las seis métricas.
+\item[H2.] (Ridge Estocástico mejora CLIP-cos y pairwise-ID sobre Ridge Lineal):
+falta validarla con la corrida final en RTX~4070~Ti.
+\item[H3.] (Validez científica sin prompt positivo): respaldada por diseño y por las
+propias alucinaciones del régimen Ridge Lineal, que se le atribuyen sin
+duda al embedding del adapter. La ablación con prompt aleatorio queda
+pendiente como sanity check.
+\item[H4.] (Reproducibilidad en GPU de 12~GB): Parcialmente respaldada por la inferencia que ya 
+hice; falta el benchmark de wall-time del pipeline completo.
+\end{itemize}
+
+\section{Limitaciones observadas}
+
+\begin{itemize}
+\item[•] Tamaño del conjunto. BOLD5000 da unos cinco mil estímulos por sujeto, frente a los 
+treinta mil de NSD. Eso limita cuánto puede complicarse el adapter sin caer en overfitting, y 
+explica en parte por qué me quedé con variantes de Ridge en vez de migrar a un MLP residual 
+contrastivo completo.
+\item[•] Variabilidad entre sujetos. El adapter no se transfiere de un sujeto a otro sin más; 
+hay que reentrenarlo para cada sujeto destino.
+\item[•] Restricción de VRAM. Con 12~GB no puedo usar SDXL ni Versatile Diffusion sin offloading, 
+así que probar decodificadores más grandes queda fuera de alcance.
+\item[•] Comparabilidad. Como BOLD5000 y NSD (donde publican MindEye2 y Brain-Diffuser) no 
+coinciden, el pairwise-ID no se puede comparar de forma directa; por eso reporto la comparación 
+con el SOTA con su salvedad.
+\item[•] Invariancia espacial de CLIP. Una reconstrucción puede acertar en lo semántico y aun 
+así salir con pose u orientación arbitraria. Un prior de bajo nivel (VDVAE) ayudaría a paliarlo 
+en parte.
+\end{itemize}
+
+\section{Cierre}
+
+A lo largo del trabajo hay dos cambios de arquitectura: primero cambié el stack histórico VQGAN+VGG por SD~unCLIP, y luego pasé del Ridge Lineal puro al Ridge Estocástico. Dejo documentado, de forma cualitativa, el fallo estructural del mapeo lineal sobre el espacio CLIP nativo, y propongo una alternativa intermedia ---simple y barata--- que introduce variabilidad calibrada sin pagar un MLP residual contrastivo completo. Medir con exactitud cuánto se cierra la brecha frente al SOTA depende todavía de la corrida del Ridge Estocástico en RTX~4070~Ti. No pretendo cerrar el problema de la reconstrucción visual desde fMRI; mi intención es dejar un peldaño firme hacia él, aislando qué aporta cada pieza ---el mapeo lineal, el ruido calibrado, el decodificador--- antes de dar el salto a arquitecturas profundas. Ese salto, con adapters contrastivos profundos al estilo MindEye2 y decodificación en tiempo real con BCI, es lo que desarrollo en el capítulo siguiente.
+
+\afterpage{\blankpage}
+

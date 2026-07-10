@@ -1,0 +1,149 @@
+\chapter{Trabajo Futuro}
+
+Cierro con tres horizontes para seguir el trabajo. A corto plazo, pulir el pipeline offline. A 
+mediano, migrar a NSD y armar ensembles. Y a largo, la apuesta grande: decodificar en tiempo 
+real con BCI multi-modalidad (EEG + fNIRS) y dejar el problema formalizado como una optimización 
+P-NP sobre flujos en vivo.
+
+\section{Corto plazo: refinamiento del pipeline offline}
+
+\subsection{Adapter contrastivo profundo}
+
+Justo encima del Ridge Estocástico, el paso natural es entrenar un MLP residual contrastivo 
+completo con pérdida InfoNCE bidireccional, al estilo de MindEye~\cite{scotti2023mindeye}, y 
+sumarle un prior de difusión por sujeto como el de MindEye2~\cite{scotti2024mindeye2}. Con eso 
+cambia por completo el régimen de optimización ---dejo de calibrar un solo $\sigma$ y paso a 
+entrenar unos ciento cincuenta y cuatro millones de parámetros con una pérdida híbrida InfoNCE 
++ MSE + coseno--- y debería cerrarse la brecha frente al SOTA reportado en NSD.
+
+\subsection{Migración a NSD}
+
+Si consigue acceso al Natural Scenes Dataset~\cite{allen2022nsd}, repetir el experimento
+sobre NSD dejaría comparar directo contra MindEye2 y Brain-Diffuser sobre
+el mismo benchmark, y se sacaría de encima el disclaimer de comparación cruzada.
+
+\subsection{Optimización de inferencia}
+
+La idea es cuantizar el UNet a int8 con \texttt{bitsandbytes} y bajar el modelo por distillation 
+a $\leq 8$ pasos, de modo que el costo de inferencia se acerque al tiempo real. Es, en el fondo, 
+un puente hacia la línea de largo plazo.
+
+\section{Mediano plazo: ensembles y multi-modalidad}
+
+\subsection{Ensemble Ridge Estocástico + adapter contrastivo}
+
+Aunque el Ridge Lineal se queda corto como solución de producción (Cap.~7), su tendencia lineal 
+global y su costo casi nulo lo hacen útil como segundo canal de un ensemble ponderado:
+\[
+\hat{\mathbf{e}}_{\mathrm{ens}} = \alpha\,\hat{\mathbf{e}}_{\mathrm{contrast}} + (1-\alpha)\,\hat{\mathbf{e}}_{\mathrm{stoch}},
+\]
+con $\alpha$ ajustado en validación. En las zonas del espacio CLIP donde el Ridge Estocástico ya 
+converge bien ---paisajes, escenas naturales--- podría aportar la magnitud que al embedding 
+contrastivo le falta, pues la pérdida InfoNCE no fija la escala absoluta.
+
+\subsection{Fusión con priors low-level (VDVAE)}
+
+Sumar la latente $z$ del VAE como segunda condición, a la manera de Takagi--Nishimoto, devolvería 
+parte de la estructura espacial que CLIP deja fuera por su invariancia.
+
+\section{Largo plazo: decodificación en tiempo real con BCI}
+
+\subsection{Migración de fMRI a EEG}
+
+EEG da resolución temporal de milisegundos contra segundos en fMRI, y
+además es portable: cascos por menos de mil dólares frente a un escáner 3T
+del orden de dos millones. Lo que se paga es resolución espacial pobre y razón
+señal a ruido baja. Líneas:
+
+\begin{itemize}
+\item[•] Adapter EEG$\rightarrow$CLIP entrenado sobre datasets tipo ThingsEEG2 (1854 categorías, 
+como ochenta mil trials).
+\item[•] Arquitectura recurrente o Transformer sobre canales $\times$ tiempo.
+\item[•] Validación cruzada entre sujetos via pre-entrenamiento multi-sujeto al estilo 
+MindEye2.
+\end{itemize}
+
+\subsection{Fusión EEG + fNIRS}
+
+El fNIRS (functional Near-Infrared Spectroscopy) capta una señal hemodinámica parecida a la 
+BOLD, solo que óptica, portable y más barata. Al juntar EEG (eléctrico, en ms) con fNIRS 
+(hemodinámico, en s) se obtiene alta resolución temporal respaldada por algo de tipo BOLD:
+
+\begin{itemize}
+\item[•] Modelo dual-stream: encoder EEG de alta frecuencia + encoder fNIRS de baja frecuencia 
+$\rightarrow$ fusión tardía.
+\item[•] Calibración cruzada mediante un trial de fMRI de referencia por sujeto.
+\end{itemize}
+
+\subsection{Triple partición (train / val / streaming-test)}
+
+En escenarios online, la partición clásica train/val/test no agarra la
+distribución real de la inferencia en vivo (drift, fatiga del sujeto, sesiones que se
+reparten a lo largo del día). Se propone:
+
+\begin{itemize}
+\item[•] \texttt{Train}: sesiones offline históricas.
+\item[•] \texttt{Val}: una sesión-puente con calibración breve (5~min).
+\item[•] \texttt{Streaming-test}: el flujo en vivo, con recalibración online del adapter (online ridge 
+update, momento $\beta=0.95$).
+\end{itemize}
+
+\subsection{Formalización como problema P vs.\ NP en tiempo real}
+
+Seleccionar el subconjunto óptimo de canales o vóxeles informativos por ventana temporal es un 
+problema combinatorio:
+\begin{equation}
+\max_{\mathcal{S} \subseteq \mathcal{C},\, |\mathcal{S}|=k} \;\; I(\mathbf{x}_\mathcal{S}; \mathbf{e}),
+\end{equation}
+\myequations{Selección de canales por información mutua}
+con $\mathcal{C}$ el conjunto total de canales e $I(\cdot;\cdot)$ la información mutua. Con 
+$|\mathcal{C}|=128$ canales EEG y $k=20$, la búsqueda exhaustiva ronda $\binom{128}{20} \approx 10^{22}$
+: NP-Hard. Los caminos posibles:
+
+\begin{itemize}
+\item[•] Aproximación submodular: cuando $I$ es submodular, el greedy asegura una 
+$(1-1/e)$-aproximación en $\mathcal{O}(k|\mathcal{C}|)$.
+\item[•] Programación lineal entera relajada: resolver el LP y luego redondear de forma 
+aleatorizada.
+\item[•] Aprender el subset (Concrete distribution): una relajación continua y diferenciable 
+de la indicadora binaria, entrenable end-to-end junto con el adapter.
+\item[•] Window-online: rehacer la selección cada $T$ segundos para seguir la no-estacionariedad 
+del sujeto.
+\end{itemize}
+
+\subsection{Latencia objetivo y métricas de tiempo real}
+
+El pipeline que persigo: una ventana de 250~ms de EEG, decodificación por debajo de 50~ms y 
+generación por debajo de 200~ms con SD destilado a cuatro pasos. Como métrica extra, la ITR 
+(Information Transfer Rate), medida en bits por minuto.
+
+\subsection{Aplicaciones BCI clínicas y de diseño}
+
+\begin{itemize}
+\item[•] \textbf{Síndrome de enclaustramiento (locked-in):} comunicación visual basada en imaginería 
+para pacientes que se han quedado sin canal motor.
+\item[•] \textbf{Estudio objetivo de la fenomenología psiquiátrica:} en esquizofrenia, delirios y 
+alucinaciones, las reconstrucciones abrirían una ventana empírica a la imagen mental del 
+sujeto, que acompañe a sus reportes verbales.
+\item[•] \textbf{Asistencia en afasia:} decodificar imaginería visual cuando falla el lenguaje 
+hablado, acompañando enfoques recientes de decodificación auditiva abierta~\cite{chen2023openvocab}.
+\item[•] \textbf{Captura rápida de imaginería creativa:} integración con flujos de diseño tipo 
+Photoshop, donde el usuario tira la idea mental directo al lienzo vía adapter en tiempo real y 
+la termina de pulir con herramientas tradicionales, sin tener que arrancar de una descripción 
+textual o un boceto.
+\item[•] \textbf{Interfaces de prótesis con \textit{feedback} visual cerrado.}
+\end{itemize}
+
+\section{Riesgos y mitigaciones}
+
+\begin{itemize}
+\item[•] EEG con señal-ruido baja $\rightarrow$ qué hacer:  ensemble más ICA más filtros 
+adaptativos.
+\item[•] No-estacionariedad entre sesiones $\rightarrow$ qué hacer: recalibración online y 
+entrenamiento dominio-adversarial.
+\item[•] Privacidad neuronal $\rightarrow$ qué hacer: federated learning y procesamiento local 
+on-device.
+\end{itemize}
+
+\afterpage{\blankpage}
+

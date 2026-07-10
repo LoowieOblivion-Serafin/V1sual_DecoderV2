@@ -1,0 +1,100 @@
+\chapter{Estado del Arte}
+
+Reconstruir imágenes a partir de la actividad cerebral no es un tema nuevo; lo que sí ha 
+cambiado, y bastante, es cómo se aborda. Al principio se buscaba recuperar los píxeles de 
+manera directa. Hoy el mismo problema se entiende de otra forma: como una traducción semántica 
+entre dos mundos, el del córtex y el de los espacios latentes multimodales. Este capítulo 
+sigue esa evolución, desde las primeras redes convolucionales hasta lo que se hace ahora con 
+difusión y aprendizaje contrastivo.
+
+\section{Primera Generación: enfoques convolucionales y bayesianos}
+
+Los primeros trabajos que sacaron resultados decentes con fMRI recurrieron a redes 
+convolucionales preentrenadas, usándolas como extractores de características.
+
+\subsection{Regresión a espacios VGG}
+
+Shen et al.~\cite{shen2019deep} y Beliy et al.~\cite{beliy2019voxels} encontraron que la 
+actividad de V1–V3 tiene buena correlación con las primeras capas de VGG-19 y AlexNet. 
+La receta era casi siempre la misma: armas una regresión lineal (Ridge o dispersa) desde los
+vóxeles hacia las activaciones de la red, y después das la vuelta a la red con un
+Deep Image Prior para construir una imagen que pegue con esas activaciones.
+
+\subsection{Decodificación bayesiana y espacios discretos (VQGAN)}
+
+Koide-Majima et al.~\cite{koidemajima2024} llevaron la misma línea más allá con un marco
+bayesiano sobre el espacio latente discreto de VQGAN. Mezclando un componente perceptual 
+con uno semántico lograron una identificación pareada bastante buena.
+El problema de fondo de esta primera generación es de cómo está armada:
+VGG es un espacio puramente visual y VQGAN es un diccionario discreto, y
+ninguno conoce de semántica. Por eso las reconstrucciones quedaban parecidas
+en la estructura general pero con significados aleatorios: una pelota con textura
+de perro, una calle con objetos sin nombre. Por eso en esta tesis VQGAN+VGG
+aparece sólo como referencia histórica, no es la arquitectura que se corre.
+
+\section{Segunda Generación: difusión latente}
+
+Cuando salió Stable Diffusion la cosa cambió en pocos meses.
+
+\subsection{Condicionamiento dual}
+
+Takagi y Nishimoto~\cite{takagi2023} fueron los primeros en usar Stable Diffusion
+como decodificador directo. En lugar de predecir activaciones convolucionales
+gigantes, entrenaron mapeos lineales hacia dos blancos más chicos: la
+representación latente del VAE y el embedding de texto del estímulo.
+
+\subsection{Brain-Diffuser}
+
+Ozcelik y VanRullen~\cite{ozcelik2023} llevaron la idea a una difusión versátil condicionada con
+embeddings visuales continuos predichos desde fMRI. El salto en calidad se vio enseguida y 
+casi duplicó las métricas del estado del arte anterior.
+
+\section{Tercera Generación: representaciones contrastivas y prior de difusión}
+
+Las arquitecturas más nuevas dejan de lado el mapeo lineal y le dedican una
+red entera al tema de extraer significado.
+
+\subsection{MindEye y alineamiento geométrico}
+
+MindEye~\cite{scotti2023mindeye} arranca con un diagnóstico simple: la regresión lineal no
+captura la geometría del córtex visual cuando se la lleva al hiperespacio de
+CLIP. La solución fue cambiar el lineal por un MLP residual entrenado con
+pérdida InfoNCE bidireccional. El detalle es que el contrastivo no se conforma
+con minimizar el MSE, sino que obliga al vector predicho a quedar cerca del
+concepto correcto y lejos de los demás, conservando la topología relacional del
+espacio CLIP.
+
+\subsection{MindEye2}
+
+MindEye2~\cite{scotti2024mindeye2} amplía el marco con preentrenamiento multi-sujeto y un
+prior de difusión adaptativo; a día de hoy es la frontera sobre el Natural Scenes Dataset 
+(NSD). En paralelo, trabajos como el benchmark NSD-Imagery~\cite{kneeland2025nsdimagery} 
+empujan hacia la reconstrucción de imaginería y el modelado celular.
+
+\section{Brecha vigente: Modality Gap y adaptadores semánticos}
+
+De toda la revisión se desprende algo que conviene subrayar: el decodificador generativo 
+(DCGAN, VQGAN o Stable Diffusion) no es el cuello de botella. Lo que sigue sin resolverse, y lo 
+que esta tesis ataca, es la brecha intermodal, el Modality Gap~\cite{liang2022mind}.
+
+Esa brecha describe el desajuste geométrico entre lo que sale del fMRI y lo que CLIP espera. A 
+CLIP se lo entrenó para que imágenes y texto compartieran un sub-manifold bien armado, pero 
+nadie lo preparó para alojar señales corticales dentro de él. Cuando un Ridge multivariado 
+predice un vector CLIP desde los vóxeles, el estimador regularizado en $L_2$ se va hacia la 
+media para bajar la varianza frente al ruido del fMRI, y termina cayendo en zonas de baja 
+densidad del manifold semántico. Al recibir un embedding así, sin estructura ni norma típica, 
+Stable Diffusion 2.1 unCLIP hace lo que sabe: alucina tipografía y texturas genéricas. Es, 
+punto por punto, lo que veo en la corrida Ridge Lineal.
+
+De ahí que el frente activo en neurociencia computacional sea hoy diseñar adaptadores que 
+cierren esa brecha. Mi tesis se planta justo ahí, con una propuesta intermedia: un adapter 
+Ridge Estocástico inspirado en MindEye y MindEye2, pero sin el entrenamiento contrastivo 
+completo. La apuesta es meter variabilidad calibrada sobre la salida del Ridge Lineal para 
+correr las predicciones hacia zonas más densas del manifold CLIP, y hacerlo sin pagar un MLP 
+residual entero entrenado con InfoNCE. El Cap.~7 compara Ridge Lineal y Ridge Estocástico en 
+lo cuantitativo y lo cualitativo; los adapters contrastivos profundos quedan como el paso 
+siguiente, natural, en el Cap.~9.
+
+\afterpage{\blankpage}
+
+

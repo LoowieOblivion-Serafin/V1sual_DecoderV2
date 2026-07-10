@@ -1,0 +1,263 @@
+\documentclass[12pt,spanish, singlespacing, openany]{MastersDoctoralThesis}
+\usepackage[utf8]{inputenc} 
+\usepackage[T1]{fontenc} 
+\usepackage[none]{hyphenat}
+\usepackage{verbatim}
+\usepackage{palatino} 
+\usepackage{acronym}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{datetime}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{subfig}
+\linespread{1.4}
+\usepackage[acronym,nomain]{glossaries}
+%\usepackage[backend=bibtex,style=authoryear,natbib=true]{biblatex}
+%\addbibresource{main.bib}
+\usepackage[autostyle=true]{csquotes}
+
+\usepackage{afterpage}
+\newcommand\blankpage{%
+    \null
+    \thispagestyle{empty}%
+    \addtocounter{page}{0}%
+    \newpage}
+    
+\usepackage{lipsum}  
+
+\usepackage[subfigure]{tocloft}    
+\newcommand{\listequationsname}{Índice de ecuaciones}
+\newlistof{myequations}{equ}{\listequationsname}
+\newcommand{\myequations}[1]{%
+\addcontentsline{equ}{myequations}{\hspace{1.5em} \protect\numberline{\theequation}#1}%
+\vspace{-0.55\baselineskip}{\centering\footnotesize\textbf{Ecuación~\theequation:}\ #1\par}\vspace{0.35\baselineskip}}
+\setlength{\cftmyequationsnumwidth}{2.5em}% Width of equation number in List of Equations
+
+\usepackage{xcolor}
+\usepackage{multicol}
+\usepackage{listings}
+\renewcommand{\lstlistingname}{Código}
+\renewcommand{\lstlistlistingname}{Índice de algoritmos}
+
+\definecolor{codegray}{rgb}{0.95,0.95,0.95}
+\definecolor{codekeyword}{rgb}{0.8,0.1,0.5}
+\definecolor{codestring}{rgb}{0.1,0.5,0.1}
+
+\lstset{
+  backgroundcolor=\color{codegray},
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{black},
+  numbers=left,
+  numbersep=10pt,
+  numberstyle=\tiny\color{gray},
+  keywordstyle=\color{codekeyword}\bfseries,
+  stringstyle=\color{codestring},
+  commentstyle=\color{gray}\itshape,
+  showstringspaces=false,
+  upquote=true,
+  columns=fullflexible,
+  xleftmargin=3.4em,
+  framexleftmargin=2.8em,
+  framexrightmargin=0.5em,
+  xrightmargin=0.5em,
+  aboveskip=1.5em,
+  belowskip=1.5em
+}
+
+\usepackage{float}
+\usepackage{url}
+\usepackage[font=footnotesize,labelfont=bf]{caption}
+\makeatletter
+\g@addto@macro{\UrlBreaks}{\UrlOrds}
+\makeatother
+
+\thesistitle{Traducción intermodal de actividad cerebral visual hacia espacios latentes semánticos para reconstrucción de imágenes mediante modelos generativos condicionados}
+\supervisor{Dr. Yuri Nuñez Medrano}
+\examiner{}
+\degree{Licenciatura en Ciencia de la Computación}
+\author{Alvaro Jesús Taipe Cotrina}
+\subject{Decodificación cerebral · Aprendizaje profundo}
+\keywords{fMRI, BOLD5000, Stable Diffusion, unCLIP, CLIP ViT-L/14, reconstrucción visual, decodificación cerebral, modelos de difusión}
+\university{\href{http://www.uni.edu.pe/}{Universidad Nacional de Ingeniería}}
+\department{\href{http://fc.uni.edu.pe/fc/index.php/escuelas/ciencia-de-la-computacion}{Escuela Profesional de Ciencia de la Computación}}
+\faculty{\href{http://fc.uni.edu.pe/fc/}{Facultad de Ciencias}}
+\hypersetup{pdftitle=\ttitle} 
+\hypersetup{pdfauthor=\authorname}
+\hypersetup{pdfkeywords=\keywordnames} 
+\sloppy
+\decimalpoint
+\begin{document}
+\frontmatter 
+\pagestyle{plain} 
+\begin{titlepage}
+\begin{center}
+%\textsc{\huge \univname}\\[0.5cm]
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.3\textwidth]{Figures/logo_uni.png}
+\end{figure}
+
+\textsc{\huge \univname}\\[0.3cm]
+\textsc{\Large Facultad de Ciencias}\\[0.2cm]
+\textsc{\large Escuela Profesional de Ciencia de la Computación}\\[0.5cm]
+% \textsc{\LARGE \textit{T\'itulo del trabajo}}\\[2cm] 
+\textsc{\large Tesis de Pregrado}\\[0.5cm]
+{\huge \bfseries \ttitle}\\[0.5cm]
+% Thesis title
+%\bigskip
+%\HRule \\[0.8cm] % Horizontal line
+
+%\begin{minipage}{1.5\textwidth}
+%\begin{flushleft} \large
+\bigskip
+\large\emph{Autor:\\}
+{\authorname}\\ 
+\large\emph{Asesor:\\} 
+{\supname} 
+%\end{flushleft}
+%\end{minipage}
+%\\[2cm]
+\\[0.8cm]
+{\large \today}\\[1cm] 
+ 
+\vfill
+\end{center}
+\end{titlepage}
+\afterpage{\blankpage}
+%\cleardoublepage
+
+%\renewcommand{\abstractname}{Abstract}
+\begin{abstract}
+\addchaptertocentry{\abstractname}
+
+Reconstruir lo que una persona ve a partir de su fMRI ya no suena a ciencia
+ficción. Buena parte del trabajo pesado la han hecho, en los últimos años,
+codificadores como CLIP ViT-L/14 y generadores como Stable Diffusion 2.1
+unCLIP. 
+
+En la presente investigación se emplearon dichas tecnologías para tratar de resolver
+un problema espinoso; el uso de los espacios latentes como buena representación
+de la actividad cerebral, dicho problema conocido mejor como "Modality Gap" es el eje
+principal de este análisis, llevado acabo con data open-source como lo es BOLD5000.
+
+El conectar un decodificador Ridge Lineal a Stable Diffusion 2.1 unCLIP 
+fue el primer paso para abordar el Modality Gap. Como consecuencia del experimento el 
+resultado fue variado, algunos muy prometedores, y otros que basicamente se les 
+podria describir como alucinaciones tipograficas.
+
+Para disminuir las alucinaciones tipograficas, se propuso un Ridge Estocástico 
+inspirado en MindEye y MindEye2 pero que se ahorra el entrenamiento contrastivo completo.
+Dicho procedimiento se basa en tomar la salida del Ridge Lineal y sumarle ruido Gaussiano 
+previamente calibrado, para finalmente devolverlo a la hiperesfera de embeddings.
+
+En dicho proceso se un hiperpametro nuevo $\sigma$, que ajusto en validación buscando
+la mayor valicación por pares (pairwise accuracy).El procedimiento redujo el "Modality 
+Gap" considerablemente, dejando paso a prometedores avances en la decodificación visual. 
+
+\textsc{Palabras clave:} fMRI, CLIP ViT-L/14, BOLD5000, Stable Diffusion 2.1 unCLIP, 
+Modality Gap, embeddings, decodificación visual.
+
+\end{abstract}
+
+\clearpage
+\afterpage{\blankpage}
+\clearpage
+\tableofcontents
+
+\newpage
+\listoffigures
+
+\afterpage{\blankpage}
+\newpage
+\listoftables
+
+\afterpage{\blankpage}
+\newpage
+\listofmyequations
+
+\afterpage{\blankpage}
+\lstlistoflistings
+
+\afterpage{\blankpage}
+\newpage
+\begin{center}
+{\huge Índice de Acrónimos}\\[2cm]
+\end{center}
+\bigskip
+\begin{multicols}{2}
+\begin{description}
+\item[fMRI] Functional Magnetic Resonance Imaging
+\item[BOLD] Blood-Oxygen-Level Dependent
+\item[ROI] Region Of Interest
+\item[CLIP] Contrastive Language–Image Pre-training
+\item[ViT] Vision Transformer
+\item[SD] Stable Diffusion
+\item[unCLIP] Image-conditioned Stable Diffusion
+\item[VAE] Variational Autoencoder
+\item[UNet] U-shaped Convolutional Network
+\item[CFG] Classifier-Free Guidance
+\item[LoRA] Low-Rank Adaptation
+\item[MLP] Multi-Layer Perceptron
+\item[SSIM] Structural Similarity Index Measure
+\item[LPIPS] Learned Perceptual Image Patch Similarity
+\item[PixCorr] Pixel Correlation
+\item[NSD] Natural Scenes Dataset
+\item[COCO] Common Objects in Context
+\item[DL] Deep Learning (Aprendizaje Profundo)
+\item[LDM] Latent Diffusion Model
+\item[BCI] Brain-Computer Interface
+\item[EEG] Electroencefalografía
+\item[fNIRS] functional Near-Infrared Spectroscopy
+\item[P-NP] Clases de complejidad computacional polinomial
+\item[ER] Entidad-Relación
+\item[UML] Unified Modeling Language
+\item[2AFC] Two-Alternative Forced Choice
+\item[InfoNCE] Information Noise-Contrastive Estimation
+\item[NCE] Noise-Contrastive Estimation
+\item[AMP] Automatic Mixed Precision
+\item[LSS] Least-Squares-Separate (GLM por trial)
+\item[MedARC] Medical AI Research Center
+\item[NP] Nondeterministic Polynomial-time
+\end{description}
+\end{multicols}
+
+\newpage
+\thispagestyle{empty}
+\mbox{}
+\newpage
+\begin{center}
+{\huge \textit{Agradecimientos}}\\[1.5cm]
+\end{center}
+
+% TODO: Redactar agradecimientos (asesor, ACECOM, familia, etc.)
+
+A la Universidad Nacional de Ingeniería y a la Facultad de Ciencias por la formacion recibida y las tarjetas graficas para el procesamiento de datos. Al grupo ACECOM de la Escuela Profesional de Ciencia de la Computación, por el espacio de discusión y los recursos computacionales facilitados durante el desarrollo experimental. A mis padres: a mi madre por darme la base cognitiva y a mi padre por impulsar mi curiosidad. A Dios por prestarme una espuma cuantica de su sabiduria e inteligencia para desentrañar las verdades de la segunda cosa mas compleja despues del universo, el cerebro.
+
+\mainmatter 
+\pagestyle{thesis}
+
+\input{Chapters/Cap1}
+\input{Chapters/Cap2}
+\input{Chapters/Cap3}
+\input{Chapters/Cap4}
+\input{Chapters/Cap5}
+\input{Chapters/Cap6}
+\input{Chapters/Cap7}
+\input{Chapters/Cap8}
+\input{Chapters/Cap9}
+
+\bibliographystyle{IEEEtran}
+\bibliography{main}
+
+\appendix
+\input{Appendix/AppendixA}
+\input{Appendix/AppendixB}
+\input{Appendix/AppendixC}
+
+\end{document}

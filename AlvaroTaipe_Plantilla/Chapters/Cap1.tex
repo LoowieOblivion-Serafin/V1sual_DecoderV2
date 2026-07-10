@@ -1,0 +1,184 @@
+\chapter{Introducción}
+
+\section{Motivación}
+
+El origen de esta tesis no es un algoritmo, sino una pregunta que arrastro desde hace 
+tiempo: ¿se podría mostrar en una pantalla lo que alguien imagina? Al oír la palabra 
+``imaginación'' uno piensa enseguida en entretenimiento, pero el asunto va mucho más 
+lejos. El desarrollo de esta tecnología podría ayudarnos a entender qué sucede en la 
+mente de personas con esquizofrenia, o en general cualquier transtorno correspondiente 
+a la alteracion en la psique y corteza cerebral, lugar donde la frontera entre lo que 
+se ve y lo que se imagina se vuelve borrosa. Además de abrir un canal de comunicación 
+para pacientes con síndrome de enclaustramiento, que piensan con normalidad aunque no 
+logran moverse. Y podría dar voz a personas con paraplejia, hoy limitadas a la mirada 
+o a unos pocos gestos. 
+
+Hoy nos entendemos con las máquinas escribiendo, hablando o haciendo clic; o siendo 
+mas tecnicos por dispositivos de interaccion humano-computadora, en ambos casos pasa 
+por las manos y por un control voluntario. Una interfaz que leyera directamente el 
+contenido mental se saltaría ese cuello de botella. El problema es que descifrar 
+imágenes desde el cerebro cuesta muchísimo en términos de cómputo, debido a los sitemas
+de señaes como las EEG no tienen a ser muy precisos, los sistemas fNIRS de espectrocopia
+de infrarrojo cercano, si bien son mas precisos, no es tan potente como una fMRI;
+por otro lado la alta dimensionalidad del cerebro deja pequeño a cualquier conjunto de 
+datos, de ahí que este trabajo todavía no se meta con la imaginería. 
+
+Lo primero es reconstruir lo que el sujeto está viendo con su fMRI; el salto a lo que
+imagina vendrá después. El objetivo de fondo, mirando a varios años adelante, es 
+proyectar directamente la imaginacion a entornos digitales.
+
+\section{Planteamiento técnico}
+
+Decodificar imágenes desde fMRI es una especie de problema inverso mal 
+condicionado. La señal depediente del nivel de oxigenacion sanguiena(BOLD),del conjunto 
+de datos BOLD5000, aporta del orden de $V \approx 50{,}000$ vóxeles frente a unos 
+escasos $N \approx 5{,}000$ estímulos; y, para colmo, la respuesta hemodinámica no es 
+igual de una persona a otra \cite{logothetis2008what}. Shen et al.~\cite{shen2019deep} 
+y Beliy et al.~\cite{beliy2019voxels} mostraron que las primeras capas de VGG-19 
+explican parte de la actividad de la corteza visual, trabajo llevado a cabo con arquitectura VQGAN. 
+Pero dejaron algo igual de importante, el querer reconstruir la imagen original sin 
+pasar por un nivel semántico termina en imágenes borrosas, sin identidad de objeto.
+
+Con la llegada de CLIP \cite{radford2021learning} y los modelos de difusión latente 
+\cite{rombach2022high} el planteamiento cambió de raíz. Ya no hace falta regresar a los
+píxeles, basta con apuntar al espacio de embeddings y dejar que el generador arme la 
+imagen. Partiendo de esa idea monté un primer prototipo, el adapter lineal Ridge que 
+lleva de fMRI a CLIP ViT-L/14 y pasa el resultado a Stable Diffusion 2.1 unCLIP. 
+Opte por lo lineal porque mostraba hasta dónde llegaba un mapeo proyectivo y ayudaba a 
+ubicar en qué punto se rompe la decodificación.
+
+Para tener un baseline matemáticamente claro antes de complicar nada, la primera fase 
+implementa ese proyector Ridge, que estabiliza el problema inverso con regularización 
+de Tikhonov \cite{tikhonov1977solutions}:
+\begin{equation}
+\hat{\beta} = \arg\min_{\beta} \| Y - X\beta \|_2^2 + \lambda \|\beta\|_2^2
+\end{equation}
+donde $X$ es la matriz de diseño con los vóxeles e $Y$ la matriz de embeddings CLIP 
+objetivo. Insisto en su papel: el Ridge Lineal está aquí para diagnosticar, no para 
+competir. Deja ver el efecto sin que la no linealidad o el ruido lo tapen.
+
+\section{Problema}
+
+El diseño actual abarca una dificultad que aparece una y otra vez; CLIP y fMRI no son 
+isomorfos. El adapter puede generar vectores en $\mathbb{R}^{768}$, con tan altisima 
+dimensionalidad que no hay garantía que se encuentren dentro del colector de 
+representaciones de  CLIP. Entonces \textbf{¿Cómo bajar la alietoriedad en la 
+reinterpretacion de los embeddings de fMRI de BOLD5000 por parte de CLIP mientras se mantiene la 
+coherencia global de la imagen reconstruida?}
+
+\section{Objetivo General}
+
+Armar y diagnosticar un sistema que reconstruye imagen a partir de fMRI sobre BOLD5000, 
+usando dos adapters. El primero, un proyector lineal Ridge, sirve de línea base 
+bien aislable. El segundo, un adapter Ridge Estocástico inspirado en MindEye y 
+MindEye2 que arregla el comportamiento determinista del lineal y la pérdida de norma 
+en el espacio CLIP. Los dos alimentan el pipeline image-to-image de Stable Diffusion 2.1 
+unCLIP.
+
+\section{Objetivos Específicos}
+
+\begin{itemize}
+\item[•] Preprocesar BOLD5000 y armar la máscara cortical visual (V1--V4, LOC, PPA), 
+cambiando la selección heurística por una restricción biológica.
+\item[•] Ajustar el adapter Ridge y barrer el hiperparámetro $\lambda$ con validación 
+cruzada en hojas por sujeto.
+\item[•] Programar el Ridge Estocástico, que cuesta casi lo mismo que el lineal salvo 
+por el término de ruido que se inyecta sobre la dirección predicha.
+\item[•] Enganchar ambos adapters al pipeline SD 2.1 unCLIP y calibrar el factor de guía 
+CFG \cite{ho2022classifier}.
+\item[•] Medir con SSIM, PSNR, PixCorr, LPIPS, CLIP-cos y 2AFC, y leer los modos de 
+fallo de forma cualitativa.
+\end{itemize}
+
+\section{Hipótesis}
+
+\begin{itemize}
+\item[H1.] El Ridge capta parte de la dirección semántica, pero ni respeta la norma ni 
+la geometría angular de CLIP. Esa carencia explica las fallas tipográficas que vi en mis 
+ensayos previos, las mismas que el Modality Gap anticipa en el plano teórico 
+\cite{liang2022mind}.
+\item[H2.] Al inyectar variabilidad controlada sobre la salida del proyector, el Ridge 
+Estocástico corre las predicciones hacia zonas del manifold CLIP donde SD 2.1 unCLIP las 
+procesa mejor. La consecuencia esperada es más coherencia semántica en CLIP-cos, y todo 
+ello sin pagar un entrenamiento contrastivo completo.
+\end{itemize}
+
+\section{Justificación}
+
+Este estudio propone un puente interdisciplinario entre la neurociencia cognitiva y la in
+teligencia artificial. Busca llenar un vacío en el conocimiento al explorar cómo los modelos
+computacionales de semántica pueden alinearse con los mapas semánticos unificados del cerebro
+humano y la codificación de información relacional. Al hacerlo, se sientan las bases teóricas
+para la traducción computacional de la semántica visual, avanzando en la comprensión de
+cómo la información se representa tanto en sistemas biológicos como artificiales. 
+
+Las aplicaciones potenciales de esta tecnología son transformadoras y de alto impacto
+social. En el ámbito clínico, podría ofrecer vías de comunicación avanzadas para pacientes
+con discapacidades severas, permitiéndoles externalizar pensamientos visuales complejos.
+En la neurociencia, serviría como una herramienta computacional para validar modelos de
+codificación cerebral, afinar la decodificación intermodal abre la puerta, más adelante, a BCIs 
+no invasivas para pacientes con síndrome de enclaustramiento, a estudios de patologías donde 
+se mezclan lo percibido y lo imaginado, y a canales de salida para personas con discapacidad 
+motora grave permitiendo a los investigadores ”ver” lo que el modelo predice que el cerebro está 
+representando.
+
+El enfoque de esta investigación es novedoso, ya que explora la síntesis generativa condicionada 
+por la actividad cerebral, alejándose de la simple clasificación de categorías. Propone la integración 
+de arquitecturas de vanguardia (LDMs y CLIP) que han demostrado resultados de alta fidelidad en los 
+estudios más recientes, aplicando estos métodos a la decodificación de señales complejas. 
+El diseño conceptual resultante servirá de guía metodológica para futuras implementaciones 
+experimentales en el laboratorio.
+
+\section{Estructura de la Tesis}
+
+\begin{itemize}
+\item Cap. 2 --- Marco Teórico: Este capítulo arma las bases teóricas que se necesitan para 
+entender el problema de traducir entre señales cerebrales y espacios latentes visuales.
+Está dividido en cuatro bloques que se complementan: la biología de la
+señal neuronal (Neurociencia Computacional), cómo se formaliza el mapeo
+en alta dimensionalidad (Matemáticas y Computación), las representaciones
+semánticas (Inteligencia Artificial Multimodal) y los motores que arman
+las imágenes (Modelos Generativos Profundos)
+
+\item Cap. 3 --- Estado del Arte: Lo que arrancó como un intento de reconstruir
+píxeles directo hoy se mira como un problema de traducción semántica entre
+dos mundos: el del córtex y el de los espacios latentes multimodales. Este
+capítulo cuenta esa evolución desde las primeras redes convolucionales hasta
+lo que se hace ahora con difusión y aprendizaje contrastivo.
+
+\item Cap. 4 --- Herramientas: Este capítulo cuenta qué librerías de procesamiento de fMRI, 
+modelos preentrenados, lenguajes y recursos de cómputo se usaron en su entorno además de
+arquitecturas propias desarrolladas para el proyecto.
+
+\item Cap. 5 --- Análisis : Este capítulo cuenta cómo está armado BOLD5000, el preprocesamiento, 
+los pares (estímulo, beta), las particiones, el modelo entidad-relación, el prototipeo, una 
+mirada a los algoritmos existentes y a los propios, y los requerimientos del sistema.
+
+\item Cap. 6 --- Desarrollo de la Investigación: Este capítulo formaliza los dos adapters fMRI→CLIP que se usan en 
+esta tesis, cuenta cómo se integran con Stable Diffusion 2.1 unCLIP, detalla el procedimiento 
+de inferencia y deja documentado cómo se arma cada métrica de evaluación. 
+
+\item Cap. 7 --- Análisis de Resultados: Este capítulo cuenta cómo va la evaluación. 
+La estrategia experimental tiene dos fases lógicas: (i) el adapter Ridge Lineal nativo a 
+CLIP ViT-L/14 con los bugs arreglados, que sirve de diagnóstico cuantitativo y cualitativo 
+del fallo del mapeo lineal puro sobre BOLD5000; y (ii) el adapter Ridge Estocástico, que le 
+suma ruido Gaussiano calibrado al predictor lineal y renormaliza el embedding antes de mandarlo 
+al pipeline. La corrida cuantitativa final del Ridge Estocástico se hace en la GPU NVIDIA RTX 
+4070 Ti, siguiendo la regla del flujo de trabajo. Aquí se reportan métricas, comparativos y 
+ejemplos visuales de la fase (i), y se dejan marcadas las tablas que se completarán con los 
+resultados de la fase (ii).
+
+\item Cap. 8 --- Conclusiones: En este capitulo se recapitulan los hallazgos del 
+estudio, tanto tecnicos y cientificos del trabajo, comparando las hipotesis del Cap. 1, 
+con los resultados obtenidos en el Cap. 7. Sintetizando los aportes hechos.
+
+\item Cap. 9 --- Trabajo Futuro: se trazan 3 futuras lineas de investigacion, para 
+profundizar en el trabajo, como vendria a ser el pulir el Pipeline actual, usar otras fuentes
+de material fMRIs o fNIRs como las de OpenNeuro y NSD para armar ensemblers a mediano plazo
+y por ultimo, precisar en una decodificación instantanea con BCI multimodales que combinen
+EEG y fNIRS, para la reconstruccion de imagen en tiempo real y dejar formalizado el problema 
+como obtimizacion P-NP sobre flujos en vivo.
+\end{itemize}
+
+\afterpage{\blankpage}
+

@@ -1,0 +1,138 @@
++\chapter{Herramientas}
+
+Este capítulo cuenta qué librerías, modelos preentrenados, lenguajes y
+recursos de cómputo se usaron. Está partido en cinco bloques: lenguajes y
+entorno, librerías de procesamiento de fMRI, modelos generativos, librerías de
+evaluación y arquitecturas propias.
+
+\section{Lenguajes y entorno}
+
+\subsection{Python 3.12}
+
+Python 3.12 es el lenguaje principal porque su ecosistema científico está bien maduro (NumPy, 
+PyTorch, scikit-learn) y porque encaja con las versiones recientes de \texttt{diffusers} y 
+\texttt{transformers}. El entorno se maneja con \texttt{venv} y un \texttt{requirements\_py312.
+txt} fijado por hash para que sea reproducible.
+
+\subsection{LaTeX}
+
+El documento se compila con \texttt{pdfLaTeX} sobre la clase \texttt{MastersDoctoralThesis.cls} 
+adaptada al formato UNI-FC.
+
+\section{Procesamiento de fMRI}
+
+\subsection{nibabel y nilearn}
+
+\texttt{nibabel} se encarga de leer y escribir volúmenes de neuroimagen (NIfTI, GIfTI). 
+\texttt{nilearn} pone arriba utilidades de más alto nivel para enmascarar, sacar series 
+temporales y manejar atlas, que son justo lo que se necesita para aislar la máscara cortical 
+visual de BOLD5000.
+
+\subsection{h5py y scikit-learn}
+
+Los betas ya preprocesados quedan guardados en HDF5 (\texttt{h5py}). Los dos adapters (Ridge 
+Lineal y Ridge Estocástico) se ajustan con \texttt{sklearn.linear\_model.Ridge}, y las 
+particiones se arman con \texttt{sklearn.model\_selection}.
+
+\subsection{PyTorch 2.x, AMP bf16 y \texttt{torch.compile}}
+
+PyTorch 2.x sostiene la inferencia del adapter en GPU, la integración con Stable Diffusion y 
+la inyección de ruido del Ridge Estocástico. El entrenamiento va con \texttt{torch.cuda.amp} 
+en bf16~\cite{kobayashi2017bf16,micikevicius2018amp} ---mismo rango dinámico que fp32 y sin 
+NaN en las restas centradas--- y, cuando compensa, con \texttt{torch.compile} para fusionar 
+kernels en el forward.
+
+\subsection{Optimizador y validación}
+
+Cuando hace falta optimizar por gradiente (por ejemplo, para calibrar el $\sigma$ del Ridge 
+Estocástico), se usa \texttt{torch.optim.AdamW}~\cite{loshchilov2019adamw} con weight 
+decay desacoplado. La selección de configuración se hace por pairwise accuracy sobre validación
+y no por la pérdida agregada: así la métrica de validación
+queda alineada con el objetivo final del adapter (discriminar) y no se premian
+configuraciones que bajan MSE a costa de la geometría angular.
+
+\subsection{Ficheros .mat (BOLD5000 ROIs)}
+
+Se usan los \texttt{CSI\{1..4\}\_ROIs\_TR34.mat} que los autores de BOLD5000 dejaron listos. 
+No correr un GLM LSS local ahorra entre tres y cuatro días de cómputo y saca una fuente de 
+variabilidad que no es lo que esta tesis quiere estudiar.
+
+\section{Modelos generativos}
+
+\subsection{diffusers y Stable Diffusion 2.1 unCLIP}
+
+\texttt{diffusers} (Hugging Face) expone \texttt{StableUnCLIPImg2ImgPipeline}, que acepta 
+condicionamiento directo por \texttt{image\_embeds}. El scheduler \texttt{DPMSolverMultistepScheduler}
+~\cite{lu2022dpmsolver} con 75 pasos, CFG~8.0 y noise level en 0, para no añadirle más 
+varianza al embedding del adapter.
+
+\subsection{transformers y CLIP ViT-L/14}
+
+\texttt{transformers} trae \texttt{CLIPModel} y \texttt{CLIPProcessor}. Se usan para 
+precalcular los embeddings de los estímulos (que son el target del adapter) y para medir 
+similitud coseno CLIP entre la reconstrucción y el estímulo.
+
+\subsection{xformers}
+
+\texttt{xformers} añade atención memory-efficient al UNet de SD y con ello baja el pico de 
+VRAM de unos 9~GB a 5--6~GB en bf16. En la práctica, esa diferencia es la que decide si la 
+inferencia entra holgada o no en la RTX~4070~Ti (12~GB).
+
+\section{Librerías de evaluación}
+
+\texttt{lpips} para distancia perceptual, \texttt{scikit-image} para SSIM y PSNR, \texttt{
+pytorch-msssim} para variantes multi-escala, y rutinas propias en \texttt{evaluation.py} para 
+PixCorr e identificación pareada 2-vías.
+
+\section{Arquitecturas y herramientas propias}
+
+\subsection{Adapter base: Ridge Lineal --- \texttt{phase2/adapter\_ridge.py}}
+
+Es la implementación de la línea base. Resuelve en cerrado la ecuación normal regularizada y 
+expone \texttt{evaluate(...)} con $R^{2}_{\mathrm{macro}}$, $\cos$ medio y MSE. Sirve para 
+diagnosticar de forma cuantitativa el régimen de fallo del mapeo lineal puro que está 
+documentado en el Cap.~6.
+
+\subsection{Adapter principal: Ridge Estocástico --- \texttt{phase2/adapter\_ridge\_stoch.py}}
+
+Toma el predictor del Ridge Lineal y le suma una perturbación Gaussiana calibrada 
+$\xi \sim \mathcal{N}(\mathbf{0},\sigma^{2}\mathbf{I})$, con $\sigma$ ajustado en validación 
+por pairwise accuracy; después renormaliza el embedding sobre la hiperesfera unidad y recién 
+ahí lo pasa al pipeline SD~2.1 unCLIP. La idea viene de MindEye y MindEye2, donde se ve que 
+llevar el embedding a zonas más densas del manifold CLIP ayuda al decodificador. Yo lo consigo 
+con un mecanismo más barato, sin entrenar un contrastivo completo.
+
+\subsection{Entrenador y calibrador \texttt{phase2/train\_ridge.py}}
+
+Coordina el barrido de $\lambda$ del Ridge Lineal por validación cruzada de 5 folds y el de 
+$\sigma$ para el Ridge Estocástico. Funciona con AMP bf16, semilla fija (42) y reanudación 
+desde checkpoint.
+
+\subsection{Pipeline reproducible \texttt{phase2/visual\_evaluator.py}}
+
+Encadena todo el flujo: lee el HDF5, aplica el adapter (Ridge Lineal o Ridge Estocástico), 
+pasa por el pipeline SD~2.1 unCLIP y exporta la reconstrucción junto con las figuras compare 
+(par estímulo--reconstrucción) y grid por sujeto.
+
+\subsection{Parser BIDS \texttt{events\_to\_stim\_order.py}}
+
+Pasa los \texttt{events.tsv} (estándar BIDS de OpenNeuro) al orden canónico de presentación. 
+Mantiene la reproducibilidad bit a bit.
+
+\section{Entorno de cómputo}
+
+\subsection{Hardware}
+
+Para escribir código y hacer \texttt{git push} me apoyo en una NVIDIA RTX~2070 (8~GB). Lo 
+pesado ---entrenamiento, inferencia y evaluación--- va en una NVIDIA RTX~4070~Ti (12~GB) con 
+CUDA 12.1, PyTorch 2.x, Python 3.12, AMP bf16 y \texttt{xformers}. La regla del flujo de 
+trabajo no tiene matices: en la máquina local no se entrena.
+
+\subsection{Almacenamiento y reproducibilidad}
+
+Repositorio Git con tags por fase. Datos en \texttt{data\_bold5000/}, estímulos en \texttt{
+BOLD5000\_Stimuli/}, semilla 42 fija en todos los puntos donde hay aleatoriedad (incluyendo 
+el ruido $\xi$ del Ridge Estocástico durante la evaluación).
+
+\afterpage{\blankpage}
+

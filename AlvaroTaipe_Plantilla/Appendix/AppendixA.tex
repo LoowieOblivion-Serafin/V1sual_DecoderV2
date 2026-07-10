@@ -1,0 +1,91 @@
+% Appendix A — Detalles de implementación
+
+\chapter{Detalles de implementación}
+\label{AppendA}
+
+Este apéndice documenta la organización del código, el entorno de ejecución y
+los comandos exactos que reproducen el pipeline de la Fase~2 (fMRI~$\rightarrow$
+CLIP~$\rightarrow$ SD~2.1 unCLIP) sobre BOLD5000. El repositorio está diseñado
+para correr de forma idéntica en la máquina de desarrollo (RTX~2070, 8~GB) y en
+la máquina de inferencia (RTX~4070~Ti, 12~GB); todas las rutas se resuelven por
+variables de entorno \texttt{ACECOM\_*} con fallback relativo al repositorio, de
+modo que no existen rutas absolutas incrustadas.
+
+\section{Estructura del repositorio}
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,caption={Árbol del código fuente a la fecha de cierre.},captionpos=b,label={lst:repo}]
+IA-ACECOM/
+|-- src/
+|   |-- config.py               # Rutas y parametros centralizados (ACECOM_*)
+|   |-- sd_decoder.py           # Pipeline SD 2.1 unCLIP (diffusers)
+|   |-- phase2_run_sd.py        # Inferencia desde embeddings
+|   |-- evaluation.py           # SSIM, PixCorr, PSNR, LPIPS, CLIP, pairwise
+|   |-- extract_metrics.py      # Reporte R2/Cosine/MSE por sujeto
+|   `-- phase2/
+|       |-- bold5000_loader.py       # Carga betas ROI + alineacion de stems
+|       |-- extract_vit_features.py  # Targets CLIP ViT-L/14
+|       |-- adapter_ridge.py         # Adapter Ridge (solucion cerrada)
+|       |-- adapter_ridge_stoch.py   # Ridge estocastico (contribucion)
+|       |-- mindeye_models.py        # Backbone MLP residual + InfoNCE
+|       |-- train_adapter.py         # Entrenamiento Ridge -> embeds_test.pt
+|       |-- train_mindeye.py         # Entrenamiento MindEye
+|       |-- visual_evaluator.py      # E2E: embeds -> SD -> GT|Recon + grid
+|       |-- compare_subjects.py      # Figura [GT|CSI1..CSI4] por estimulo
+|       `-- build_appendix_montages.py # Galeria paginada (este apendice)
+|-- tests/                      # Suite mock (pytest, sin GPU)
+|-- docs/                       # Hitos, arquitectura, migracion
+`-- AlvaroTaipe_Plantilla/      # Fuentes LaTeX de la tesis
+\end{lstlisting}
+
+\section{Configuración del entorno}
+
+El proyecto usa Python~3.12 y CUDA~12.1. Las dependencias se fijan en
+\texttt{src/requirements\_py312.txt} (stack \texttt{torch}, \texttt{diffusers},
+\texttt{transformers}, \texttt{scikit-learn}, \texttt{lpips}, \texttt{matplotlib}).
+
+\begin{lstlisting}[language=bash,basicstyle=\ttfamily\footnotesize,caption={Instalación del entorno.},captionpos=b,label={lst:env}]
+py -3.12 -m venv env_tesis
+env_tesis\Scripts\activate
+py -3.12 -m pip install torch torchvision --index-url \
+    https://download.pytorch.org/whl/cu121
+py -3.12 -m pip install -r src/requirements_py312.txt
+\end{lstlisting}
+
+Los datos pesados no se versionan (límite de GitHub). Deben descargarse y
+extraerse en la raíz: BOLD5000 ROIs (\texttt{.mat}) desde figshare en
+\texttt{BOLD5000\_ROIs/} y los estímulos en \texttt{BOLD5000\_Stimuli/}. En la
+máquina de inferencia se exportan las rutas antes de correr:
+
+\begin{lstlisting}[language=bash,basicstyle=\ttfamily\footnotesize,caption={Variables de entorno en la máquina de inferencia.},captionpos=b,label={lst:envvars}]
+export ACECOM_BOLD5000_ROIS_ROOT=/mnt/data/BOLD5000_ROIs
+export ACECOM_BOLD5000_STIMULI_ROOT=/mnt/data/BOLD5000_Stimuli
+export ACECOM_EVAL_OUTPUT=/mnt/scratch/acecom_out
+export ACECOM_HF_CACHE=/mnt/models/hf
+\end{lstlisting}
+
+\section{Comandos de reproducción}
+
+El flujo completo, desde los betas fMRI hasta la galería del Apéndice~\ref{AppendB},
+son cuatro pasos. Los parámetros de inferencia (75 pasos, \emph{guidance}~8.0,
+\emph{noise level}~15, semilla~42) se centralizan en \texttt{config.SD\_CONFIG}.
+
+\begin{lstlisting}[language=bash,basicstyle=\ttfamily\footnotesize,caption={Pipeline reproducible por sujeto.},captionpos=b,label={lst:repro}]
+cd src
+# 1. Targets CLIP ViT-L/14 de los estimulos presentados
+python -m phase2.extract_vit_features
+
+# 2. Adapter fMRI -> CLIP (por sujeto) -> embeds_test.pt
+python -m phase2.train_adapter --subject CSI1
+
+# 3. Reconstruccion SD 2.1 unCLIP + collages GT|Recon
+python -m phase2.visual_evaluator --subject CSI1
+
+# 4. Galeria cross-subject paginada para el Apendice B
+python -m phase2.build_appendix_montages --rows-per-page 10 --emit-tex
+\end{lstlisting}
+
+El paso~4 recorre las reconstrucciones de los cuatro sujetos, toma la
+intersección de estímulos reconstruidos y emite tanto los PNG paginados como el
+fragmento LaTeX que se incluye en el Apéndice~\ref{AppendB}. La suite de
+\texttt{tests/} valida IO, shapes y alineación de \emph{stems} con activos
+sintéticos, sin requerir GPU ni descargar los modelos.

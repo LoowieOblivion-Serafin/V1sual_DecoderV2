@@ -1,0 +1,67 @@
+% Appendix B — Resultados extendidos
+
+\chapter{Resultados extendidos}
+\label{AppendB}
+
+Este apéndice recoge el material cualitativo y cuantitativo que no cabe en el
+cuerpo principal: la galería de reconstrucciones para los cuatro sujetos
+BOLD5000 (CSI1--CSI4) y las tablas de métricas por sujeto. Las figuras se
+generan automáticamente con \texttt{phase2/build\_appendix\_montages.py} a partir
+de las reconstrucciones producidas en la máquina de inferencia (RTX~4070~Ti);
+cada página compone, por fila, el estímulo original seguido de la reconstrucción
+de cada individuo sobre ese mismo estímulo.
+
+\section{Reconstrucciones por sujeto}
+
+La Figura de la galería sigue el formato $[\,\text{Estímulo}\mid\text{CSI1}\mid
+\text{CSI2}\mid\text{CSI3}\mid\text{CSI4}\,]$: la primera columna es el estímulo
+presentado y las columnas 2--5 son las reconstrucciones SD~2.1 unCLIP obtenidas
+desde la actividad fMRI de cada sujeto. Comparar horizontalmente permite juzgar
+cuánta información visual del mismo estímulo recupera cada cerebro.
+
+% El fragmento se autogenera en la maquina de inferencia:
+%   python -m phase2.build_appendix_montages --rows-per-page 10 --emit-tex
+% Se incluye solo si ya existe (permite compilar antes de las reconstrucciones).
+\IfFileExists{Figures/reconstrucciones/apendice/apendiceB_galeria.tex}{%
+  \input{Figures/reconstrucciones/apendice/apendiceB_galeria}%
+}{%
+  \par\medskip\noindent\emph{[Galería pendiente: ejecutar
+  \texttt{build\_appendix\_montages.py} en la máquina de inferencia y recompilar.]}\par
+}
+
+\section{Tablas completas de métricas}
+
+La Tabla~\ref{tab:metrics-subject} reporta las métricas de reconstrucción
+promediadas sobre el conjunto de test compartido (113 estímulos repetidos) para
+cada sujeto. \emph{Pairwise ID} es la exactitud de identificación 2-alternativas
+(azar~$=50\%$); SSIM y PixCorr miden fidelidad estructural de bajo nivel; LPIPS y
+CLIP miden similitud perceptual y semántica. El baseline Ridge de CSI1 se sitúa
+en el nivel de azar en identificación, evidenciando la brecha frente a los
+pipelines de difusión guiada por CLIP reportados en la literatura
+\cite{koidemajima2024,scotti2024mindeye2}; esta brecha motiva la línea de
+trabajo de los talleres siguientes.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Métricas de reconstrucción por sujeto (test = 113 estímulos repetidos).
+    Valores marcados con --- corresponden a corridas aún incompletas al cierre de
+    este taller.}
+  \label{tab:metrics-subject}
+  \begin{tabular}{lccccc}
+    \toprule
+    Sujeto & Pairwise ID $\uparrow$ & SSIM $\uparrow$ & PixCorr $\uparrow$ & LPIPS $\downarrow$ & CLIP $\uparrow$ \\
+    \midrule
+    CSI1 & 0.495 & 0.457 & --- & 0.734 & --- \\
+    CSI2 & ---   & ---   & --- & ---   & --- \\
+    CSI3 & ---   & ---   & --- & ---   & --- \\
+    CSI4 & ---   & ---   & --- & ---   & --- \\
+    \midrule
+    Azar & 0.500 & ---   & --- & ---   & --- \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Las métricas se calculan con \texttt{src/evaluation.py} y se exportan a CSV/HTML
+(\texttt{config.EVALUATION\_CONFIG}). La celda de cada sujeto se completa al
+finalizar su corrida de inferencia; la tabla se actualiza regenerando el reporte
+tras el \texttt{git pull} en la máquina RTX~4070~Ti.

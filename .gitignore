@@ -97,3 +97,30 @@ debug_*.py
 .gemini/
 .claude/
 archive/
+
+# ============================================================================
+# PAPERS / MATERIAL DE REFERENCIA CON COPYRIGHT (no versionar)
+# ============================================================================
+Papers/
+extract_pdfs.py
+
+# ============================================================================
+# BINARIOS Y VERSIONES ANTIGUAS DE LA TESIS (no versionar)
+# ============================================================================
+*.exe
+AlvaroTaipe_Plantilla/Old versions documents/
+
+# ============================================================================
+# ARTEFACTOS DE COMPILACIÓN LATEX (se regeneran; .bbl SÍ se versiona)
+# ============================================================================
+*.aux
+*.out
+*.toc
+*.lof
+*.lot
+*.lol
+*.equ
+*.blg
+*.synctex.gz
+*.fls
+*.fdb_latexmk

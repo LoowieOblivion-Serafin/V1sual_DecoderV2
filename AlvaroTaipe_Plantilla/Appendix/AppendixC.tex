@@ -1,0 +1,70 @@
+% Appendix C — Notas teóricas
+
+\chapter{Notas teóricas}
+\label{AppendC}
+
+Este apéndice reúne las dos derivaciones que sustentan el pipeline pero que se
+omitieron del cuerpo por brevedad: el modelo de difusión que genera la imagen y
+la solución cerrada del regresor Ridge que mapea fMRI al espacio CLIP.
+
+\section{Modelos de difusión: derivación abreviada}
+
+\paragraph{Proceso directo (forward).} Un DDPM \cite{ho2020ddpm} define una
+cadena de Markov que agrega ruido gaussiano a la imagen $x_0$ en $T$ pasos según
+una varianza $\{\beta_t\}_{t=1}^{T}$:
+\begin{equation}
+  q(x_t \mid x_{t-1}) = \mathcal{N}\!\left(x_t;\, \sqrt{1-\beta_t}\,x_{t-1},\, \beta_t \mathbf{I}\right).
+\end{equation}
+Con $\alpha_t = 1-\beta_t$ y $\bar\alpha_t = \prod_{s=1}^{t}\alpha_s$, la
+marginal admite muestreo directo en un paso:
+\begin{equation}
+  x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\epsilon,\qquad \epsilon \sim \mathcal{N}(\mathbf{0},\mathbf{I}).
+\end{equation}
+
+\paragraph{Proceso inverso (reverse).} Una red $\epsilon_\theta(x_t,t)$ aprende a
+predecir el ruido; el entrenamiento minimiza el objetivo simplificado
+\begin{equation}
+  \mathcal{L}_\text{simple} = \mathbb{E}_{x_0,\epsilon,t}\!\left[\,\bigl\|\epsilon - \epsilon_\theta(x_t,t)\bigr\|^2\,\right].
+\end{equation}
+El muestreo parte de $x_T \sim \mathcal{N}(\mathbf{0},\mathbf{I})$ y aplica la
+media posterior estimada paso a paso hasta $x_0$.
+
+\paragraph{Guía sin clasificador (CFG).} Para condicionar la generación por un
+vector $c$ (aquí el embedding CLIP predicho desde fMRI) se combina la predicción
+condicional e incondicional con una escala de guía $w$
+\cite{ho2022cfg}:
+\begin{equation}
+  \tilde\epsilon_\theta(x_t,t,c) = (1+w)\,\epsilon_\theta(x_t,t,c) - w\,\epsilon_\theta(x_t,t,\varnothing).
+\end{equation}
+En este trabajo $c$ es el \emph{image embedding} CLIP ViT-L/14 y el generador es
+SD~2.1 unCLIP \cite{ramesh2022unclip,rombach2022ldm}; el valor
+\emph{guidance\_scale}$=8.0$ (Ap.~\ref{AppendA}) fija el compromiso entre fidelidad
+al vector del cerebro y coherencia visual.
+
+\section{Derivación de la solución cerrada de Ridge}
+
+El adapter lineal estima $W \in \mathbb{R}^{d\times p}$ que mapea $p$ vóxeles a
+las $d=768$ dimensiones del espacio CLIP. Dadas $X \in \mathbb{R}^{n\times p}$
+(betas) e $Y \in \mathbb{R}^{n\times d}$ (targets CLIP), la regresión Ridge
+\cite{hoerl1970ridge} minimiza el error cuadrático con penalización $\ell_2$:
+\begin{equation}
+  \mathcal{L}(W) = \lVert XW - Y \rVert_F^2 + \lambda \lVert W \rVert_F^2.
+\end{equation}
+El objetivo es convexo y diferenciable; su gradiente es
+\begin{equation}
+  \nabla_W \mathcal{L} = 2X^\top(XW - Y) + 2\lambda W.
+\end{equation}
+Igualando a cero, $X^\top X W + \lambda W = X^\top Y$, y factorizando $W$ se
+obtiene la solución cerrada
+\begin{equation}
+  W^\star = \left(X^\top X + \lambda \mathbf{I}\right)^{-1} X^\top Y.
+\end{equation}
+El término $\lambda\mathbf{I}$ garantiza que la matriz sea invertible incluso con
+$p > n$ (más vóxeles que trials), régimen habitual en fMRI. El \emph{shrinkage}
+que introduce $\lambda$ reduce la varianza a costa de sesgar la magnitud del
+embedding hacia cero; por ello \texttt{visual\_evaluator.py} ofrece el modo de
+normalización \texttt{ridge}, que reescala la norma antes de inyectar el vector a
+SD~2.1 unCLIP. La variante \texttt{adapter\_ridge\_stoch.py} sustituye la
+inversión exacta por descenso estocástico, habilitando penalizaciones no
+cerradas y constituyendo el peldaño de contribución hacia los talleres
+siguientes.
