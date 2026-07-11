@@ -229,28 +229,42 @@ def diagram_ridge_vs_mindeye():
     fig, ax = _canvas(12, 6.5)
     ax.text(0.5, 0.95, "Adaptadores fMRI → CLIP: Ridge · Ridge estocástico · MindEye",
             ha="center", fontsize=13, fontweight="bold")
-    w, h, y = 0.30, 0.62, 0.14
+    w, h, y = 0.30, 0.66, 0.12
     xs = [0.02, 0.35, 0.68]
-    _box(ax, xs[0], y, w, h, "Ridge (cerrado)",
-         None, "adapter_ridge.py:33", "adapt", fs=12)
-    ax.text(xs[0] + w / 2, 0.60, r"$W=(X^\top X+\lambda I)^{-1}X^\top Y$",
-            ha="center", fontsize=11)
-    for i, t in enumerate(["+ solución exacta", "+ baseline evaluado",
-                            "− sesga la norma", "− lineal"]):
-        ax.text(xs[0] + 0.02, 0.50 - i * 0.06, t, fontsize=9, color="#444444")
-    _box(ax, xs[1], y, w, h, "Ridge estocástico",
-         None, "adapter_ridge_stoch.py", "adapt", fs=12)
-    ax.text(xs[1] + w / 2, 0.60, "SGD sobre misma pérdida", ha="center", fontsize=9.5)
-    for i, t in enumerate(["+ penalizaciones no cerradas", "+ escala a datos grandes",
-                           "+ peldaño de contribución", "− requiere tuning LR"]):
-        ax.text(xs[1] + 0.02, 0.50 - i * 0.06, t, fontsize=9, color="#444444")
-    _box(ax, xs[2], y, w, h, "MindEye",
-         None, "mindeye_models.py:84", "sd", fs=12)
-    ax.text(xs[2] + w / 2, 0.60, "MLP residual (n_blocks=4)", ha="center", fontsize=9.5)
-    for i, t in enumerate(["+ no lineal, profundo", "+ InfoNCE + MSE + Cosine",
-                           "+ mayor capacidad", "− caro de entrenar"]):
-        ax.text(xs[2] + 0.02, 0.50 - i * 0.06, t, fontsize=9, color="#444444")
-    ax.text(0.5, 0.06,
+
+    def _panel(x, kind, title, formula, extra, bullets, ref):
+        face, edge = C[kind]
+        ax.add_patch(FancyBboxPatch(
+            (x, y), w, h, boxstyle="round,pad=0.008,rounding_size=0.02",
+            linewidth=1.6, edgecolor=edge, facecolor=face))
+        cx = x + w / 2
+        ax.text(cx, y + h - 0.05, title, ha="center", fontsize=12,
+                fontweight="bold", color=edge)
+        ax.text(cx, y + h - 0.13, formula, ha="center", fontsize=10.5)
+        if extra:
+            ax.text(cx, y + h - 0.185, extra, ha="center", fontsize=8.5,
+                    color="#666666")
+        for i, t in enumerate(bullets):
+            ax.text(x + 0.025, y + h - 0.27 - i * 0.07, t, fontsize=9,
+                    color="#333333")
+        ax.text(cx, y + 0.03, ref, ha="center", fontsize=8,
+                family="monospace", color=C["code"][1])
+
+    _panel(xs[0], "adapt", "Ridge (cerrado)",
+           r"$W=(X^\top X+\lambda I)^{-1}X^\top Y$", None,
+           ["+ solución exacta", "+ baseline evaluado",
+            "− sesga la norma", "− lineal"], "adapter_ridge.py:33")
+    _panel(xs[1], "adapt", "Ridge estocástico",
+           "Ridge + σ·ξ + renorm", "(ecs. 6.2–6.3)",
+           ["+ cierra el modality gap", "+ σ calibrado (pairwise 2AFC)",
+            "+ contribución central", "− añade estocasticidad"],
+           "adapter_ridge_stoch.py")
+    _panel(xs[2], "sd", "MindEye",
+           "MLP residual (n_blocks=4)", None,
+           ["+ no lineal, profundo", "+ InfoNCE + MSE + Cosine",
+            "+ mayor capacidad", "− caro de entrenar"], "mindeye_models.py:84")
+
+    ax.text(0.5, 0.05,
             "Renormalización del embedding (norm_mode 'ridge'/'unit'/'none') "
             "previa a SD 2.1 unCLIP — visual_evaluator.py",
             ha="center", fontsize=8.5, color="#666666", family="monospace")

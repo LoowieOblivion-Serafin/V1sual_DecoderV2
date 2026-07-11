@@ -24,19 +24,28 @@ CLIP. Los esquemas se derivan del código y la teoría vía DeepWiki.
 % ---------------------------------------------------------------------------
 
 \dwfig{Figures/deepwiki/proceso_difusion.png}
-  {Proceso de difusión de SD~2.1 unCLIP. El forward agrega ruido gaussiano en
-   $T$ pasos hasta $x_T\sim\mathcal{N}(0,I)$; el reverse, guiado por el embedding
-   CLIP predicho desde fMRI y por \emph{classifier-free guidance}
-   (\texttt{guidance\_scale}$=8.0$ en \texttt{src/config.py::SD\_CONFIG}),
-   reconstruye la imagen. Implementado en \texttt{src/sd\_decoder.py}.}
+  {El proceso inverso de difusión parte de ruido gaussiano en el espacio latente
+   del UNet y lo \emph{denoisea} iterativamente ($75$ pasos,
+   \texttt{config.SD\_CONFIG}), condicionado por el embedding CLIP ViT-L/14
+   (768-d) predicho desde fMRI, que se inyecta vía \texttt{image\_embeds}
+   saltando el \texttt{image\_encoder} del pipeline. El \emph{classifier-free
+   guidance} (escala $8.0$) combina la predicción condicionada por el embedding
+   cerebral con un \texttt{negative\_prompt} fijo, amplificando la señal visual
+   sin introducir contenido semántico externo; el VAE decodifica el resultado a
+   una imagen 768$\times$768. Implementado en \texttt{sd\_decoder.py}.}
   {fig:proceso_difusion}
 
 \dwfig{Figures/deepwiki/ridge_vs_mindeye.png}
-  {Comparación de los tres adaptadores fMRI$\rightarrow$CLIP: Ridge de solución
-   cerrada $(X^\top X+\lambda I)^{-1}X^\top Y$
-   (\texttt{phase2/adapter\_ridge.py}), Ridge estocástico por SGD
-   (\texttt{phase2/adapter\_ridge\_stoch.py}, peldaño de contribución) y backbone
-   MindEye con pérdida InfoNCE (\texttt{phase2/mindeye\_models.py}). Se resalta la
-   renormalización del embedding (\texttt{norm\_mode} en
-   \texttt{visual\_evaluator.py}) previa a SD~2.1 unCLIP.}
+  {Comparación de los tres adaptadores fMRI$\rightarrow$CLIP.
+   \textbf{Ridge cerrado} (\texttt{adapter\_ridge.py}): resuelve $Y=XW$ en forma
+   cerrada con regularización L2 ($\alpha{=}60000$); captura solo correlaciones
+   lineales, aplanando la magnitud de las predicciones.
+   \textbf{Ridge estocástico} (\texttt{adapter\_ridge\_stoch.py}, contribución
+   central): suma una perturbación gaussiana isotrópica $\sigma\xi$ y renormaliza
+   a la hiperesfera unidad (ecs.~6.2--6.3), con $\sigma$ calibrado en validación
+   maximizando \emph{pairwise accuracy} 2AFC (no MSE).
+   \textbf{MindEye} (\texttt{mindeye\_models.py}): MLP residual (4 bloques de
+   ancho 4096, pre-LayerNorm + GELU + dropout) entrenada con pérdida híbrida
+   InfoNCE bidireccional + MSE + cosine, que aprende la geometría del manifold
+   CLIP.}
   {fig:ridge_vs_mindeye}
