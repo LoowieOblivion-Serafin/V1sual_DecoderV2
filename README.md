@@ -1,15 +1,17 @@
 # Reconstrucción de Imágenes Mentales desde fMRI (Stable Diffusion 2.1 unCLIP + BOLD5000)
 
-Proyecto de tesis (UNI · ACECOM) que decodifica imágenes desde actividad cerebral fMRI usando una arquitectura de aprendizaje profundo no lineal inspirada en **MindEye (MedARC-AI)** y el pipeline Stable Diffusion 2.1 unCLIP.
+Proyecto de tesis (UNI · ACECOM) que decodifica imágenes desde actividad cerebral fMRI mapeando vóxeles al espacio semántico **CLIP** y decodificándolo con **Stable Diffusion 2.1 unCLIP**. El adapter fMRI→CLIP es intercambiable: un baseline **Ridge** (evaluado) y un backbone profundo tipo **MindEye** (peldaño de contribución).
 
-## Arquitectura (Nueva Fase: MindEye)
+## Arquitectura
 
 ```text
 fMRI (BOLD5000 ROIs, ~10k vóxeles)
    │
    ▼
-[MindEyeBackbone] MLP Residual (n_blocks=4)  ──► z_CLIP ∈ R^768
-(Entrenado con InfoNCE Contrastive Loss)
+[Adapter fMRI→CLIP]  ──► z_CLIP ∈ R^768
+   ├─ Ridge (solución cerrada)         → baseline evaluado
+   ├─ Ridge estocástico (SGD)          → variante regularizable
+   └─ MindEye MLP residual (InfoNCE)   → adapter profundo
    │
    ▼
 SD 2.1 unCLIP UNet (frozen) + VAE decoder (frozen)
@@ -18,17 +20,17 @@ SD 2.1 unCLIP UNet (frozen) + VAE decoder (frozen)
 Imagen reconstruida
 ```
 
-**Motivación del cambio:** El baseline anterior basado en regresión lineal (Ridge) colapsaba la variabilidad semántica en el espacio CLIP, generando texto alucinado y formas genéricas. Hemos migrado a una red estocástica y profunda con pérdida probabilística InfoNCE (Contrastive Learning) para obligar a los vectores fMRI a aprender la métrica real del espacio latente visual.
+**Motivación:** el baseline Ridge colapsa parte de la variabilidad semántica en el espacio CLIP (texto alucinado, formas genéricas), y sus métricas cuantifican esa brecha frente a los pipelines de difusión guiada por CLIP de la literatura. Sobre esa base se construyen las variantes estocástica y profunda (InfoNCE + MSE + Cosine) para acercar los vectores fMRI a la métrica real del espacio latente visual.
 
 Componentes:
 - **Dataset**: BOLD5000 (OpenNeuro) — fMRI, ROIs release (CSI1-4), estímulos COCO/ImageNet/Scene.
-- **Encoder semántico**: `openai/clip-vit-large-patch14` (target del backbone).
-- **Generador**: `diffusers/stable-diffusion-2-1-unclip-i2i-l` en bf16 + xformers.
-- **Adapter**: Red neuronal profunda (MindEye) con pérdida híbrida (InfoNCE + MSE + Cosine).
+- **Encoder semántico**: `openai/clip-vit-large-patch14` (target del adapter).
+- **Generador**: `diffusers/stable-diffusion-2-1-unclip-i2i-l` en bf16.
+- **Adapters**: `adapter_ridge.py`, `adapter_ridge_stoch.py`, `mindeye_models.py`.
 
 ## Estado del proyecto
 
-Rama actual: `main`. Migración completa de Ridge lineal a arquitectura profunda inspirada en MindEye. Estructura de directorios refactorizada a estándares de ingeniería.
+Rama actual: `main`. Pipeline endurecido y portable (rutas `ACECOM_*`), suite de tests mock sin GPU, comparador cross-subject y galería de apéndices automatizada. Baseline Ridge evaluado sobre los 4 sujetos; adapter profundo como línea de trabajo siguiente.
 
 **Aviso de Datos (Límite GitHub 5GB):**
 Debido a las restricciones de tamaño de GitHub, los datos de fMRI y los estímulos no se suben al repositorio. Debes descargarlos manualmente y extraerlos en la raíz del proyecto:
@@ -47,35 +49,54 @@ Debido a las restricciones de tamaño de GitHub, los datos de fMRI y los estímu
 ```text
 IA-ACECOM/
 ├── src/                          # Código fuente
-│   ├── config.py                 # Paths unificados dinámicos (Local/RTX4070Ti)
-│   ├── evaluation.py             # Métricas (SSIM, PixCorr, PSNR, LPIPS, pairwise)
+│   ├── config.py                 # Paths/params centralizados (ACECOM_*)
+│   ├── evaluation.py             # Métricas (SSIM, PixCorr, PSNR, LPIPS, CLIP, pairwise)
+│   ├── extract_metrics.py        # Reporte R2/Cosine/MSE por sujeto
+│   ├── locate_recons.py          # Resuelve rutas de salida + comando de empaquetado
 │   ├── phase2_run_sd.py          # Inferencia SD 2.1 unCLIP desde embeddings
 │   ├── sd_decoder.py             # Pipeline core diffusers
-│   └── phase2/                   # Entrenamiento del modelo fMRI-a-CLIP
-│       ├── mindeye_models.py     # Arquitectura de la red neuronal y loss (InfoNCE)
-│       ├── train_mindeye.py      # Bucle de entrenamiento y dataloaders
-│       └── visual_evaluator.py   # Pipeline E2E
+│   └── phase2/                   # Adapter fMRI→CLIP y evaluación
+│       ├── bold5000_loader.py         # Carga betas ROI + alineación de stems
+│       ├── extract_vit_features.py    # Targets CLIP ViT-L/14
+│       ├── adapter_ridge.py           # Adapter Ridge (solución cerrada)
+│       ├── adapter_ridge_stoch.py     # Ridge estocástico (SGD)
+│       ├── mindeye_models.py          # Backbone MLP residual + InfoNCE
+│       ├── train_adapter.py           # Entrena Ridge → embeds_test.pt
+│       ├── train_mindeye.py           # Entrena MindEye
+│       ├── visual_evaluator.py        # E2E: embeds → SD → GT|Recon + grid
+│       ├── compare_subjects.py        # Figura [GT|CSI1..CSI4] por estímulo
+│       └── build_appendix_montages.py # Galería paginada doble columna (Apéndice B)
+├── tests/                        # Suite mock (pytest, sin GPU)
 ├── docs/                         # Documentación e hitos
-│   ├── arquitectura_sistema.md
-│   ├── Hoja_de_Ruta_Tesis.md
-│   ├── INTERFACE.md
-│   └── MIGRATION.md
-├── exe/                          # Ejecutables
-│   └── ejecutable.bat            # Script maestro para generar reconstrucciones
-└── README.md
+├── exe/                          # Ejecutables (ejecutable.bat)
+└── AlvaroTaipe_Plantilla/        # Fuentes LaTeX de la tesis
 ```
 
 ## Ejecución
 
-1. **Entrenar el modelo fMRI-a-CLIP (MindEye):**
-   ```bash
-   python -m src.phase2.train_mindeye --subject CSI1 --epochs 150 --batch_size 64
-   ```
+Todos los comandos se corren desde `src/`. Las rutas se resuelven vía `config`
+y variables `ACECOM_*` (ver `src/config.py`).
 
-2. **Generar imágenes (Evaluación Visual E2E):**
-   ```cmd
-   exe\ejecutable.bat
-   ```
+```bash
+cd src
+# 1. Targets CLIP ViT-L/14 de los estímulos presentados
+python -m phase2.extract_vit_features
+
+# 2. Adapter fMRI→CLIP (por sujeto) → embeds_test.pt
+python -m phase2.train_adapter --subject CSI1        # o train_mindeye
+
+# 3. Reconstrucción SD 2.1 unCLIP + collages GT|Recon
+python -m phase2.visual_evaluator --subject CSI1
+
+# 4. Galería cross-subject paginada (Apéndice B)
+python -m phase2.build_appendix_montages --rows-per-page 12 --per-page 2 --emit-tex
+
+# Utilidad: ¿dónde quedaron las reconstrucciones?
+python locate_recons.py
+```
+
+Alternativa Windows: `exe\ejecutable.bat` orquesta la reconstrucción.
+Tests sin GPU: `pytest` desde la raíz.
 
 ## Créditos
 
