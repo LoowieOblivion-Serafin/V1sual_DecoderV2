@@ -26,27 +26,33 @@ generan con DeepWiki (Codemap) sobre el repositorio.
 % ---------------------------------------------------------------------------
 
 \dwfig{Figures/deepwiki/arquitectura_e2e.png}
-  {Arquitectura extremo a extremo del sistema. La actividad fMRI de BOLD5000
-   (ROIs visuales, \texttt{src/config.py::BOLD5000\_ROI\_SET}) alimenta el
-   adapter fMRI$\rightarrow$CLIP (\texttt{phase2/train\_adapter.py}), cuyo
-   embedding ViT-L/14 condiciona el generador SD~2.1 unCLIP
-   (\texttt{src/sd\_decoder.py}) para producir la imagen reconstruida
-   (\texttt{phase2/visual\_evaluator.py}).}
+  {Pipeline completo de reconstrucción: las betas fMRI de ROIs visuales BOLD5000
+   se cargan en \texttt{bold5000\_loader.py} y se mapean a embeddings CLIP
+   ViT-L/14 (768-d) mediante un adapter Ridge (\texttt{adapter\_ridge.py}) o
+   MindEye (\texttt{mindeye\_models.py}) entrenado en \texttt{train\_adapter.py};
+   dichos embeddings se pasan como \texttt{image\_embeds} al pipeline Stable
+   Diffusion 2.1 unCLIP instanciado en \texttt{sd\_decoder.py}, produciendo la
+   imagen reconstruida.}
   {fig:arq_e2e}
 
 \dwfig{Figures/deepwiki/flujo_modulos_phase2.png}
-  {Flujo de datos y dependencias entre los módulos de \texttt{src/phase2/}:
-   \texttt{bold5000\_loader} $\rightarrow$ \texttt{extract\_vit\_features}
-   $\rightarrow$ \texttt{train\_adapter} $\rightarrow$ \texttt{visual\_evaluator}
-   $\rightarrow$ \texttt{compare\_subjects} $\rightarrow$
-   \texttt{build\_appendix\_montages}. Cada nodo corresponde a un script real
-   del repositorio.}
+  {Secuencia de procesamiento de la Fase~2: \texttt{extract\_vit\_features.py}
+   genera los targets CLIP desde los estímulos BOLD5000; \texttt{loader.py}
+   (fachada sobre \texttt{bold5000\_loader.py}) provee los splits fMRI+CLIP a
+   \texttt{train\_adapter.py}, que guarda \texttt{embeds\_test.pt};
+   \texttt{visual\_evaluator.py} consume dichos embeddings junto con
+   \texttt{sd\_decoder.py} para reconstruir imágenes y generar collages
+   GT$|$Recon; finalmente \texttt{compare\_subjects.py} y
+   \texttt{build\_appendix\_montages.py} agregan las reconstrucciones de los
+   cuatro sujetos en figuras paginadas para el apéndice.}
   {fig:flujo_modulos}
 
 \dwfig{Figures/deepwiki/mapa_modulos_repo.png}
-  {Mapa de módulos del repositorio: \texttt{src/} (núcleo del pipeline),
-   \texttt{tests/} (suite mock sin GPU), \texttt{exe/} (lanzadores) y
-   \texttt{AlvaroTaipe\_Plantilla/} (fuentes LaTeX). La portabilidad
-   dev/inferencia se resuelve por variables \texttt{ACECOM\_*}
-   (\texttt{src/config.py}, \texttt{src/locate\_recons.py}).}
+  {Estructura del repositorio: \texttt{config.py} centraliza rutas y parámetros;
+   \texttt{sd\_decoder.py} encapsula la inferencia SD~2.1 unCLIP;
+   \texttt{src/phase2/} contiene el pipeline completo (carga, extracción de
+   features, entrenamiento de adapters y evaluación visual); \texttt{tests/}
+   agrupa las pruebas unitarias de cada componente; y
+   \texttt{exe/ejecutable.bat} orquesta la evaluación para los cuatro sujetos
+   CSI1--CSI4.}
   {fig:mapa_repo}
