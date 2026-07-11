@@ -94,51 +94,58 @@ fallo de forma cualitativa.
 
 \begin{itemize}
 \item[H1.] El Ridge capta parte de la dirección semántica, pero ni respeta la norma ni 
-la geometría angular de CLIP. Esa carencia explica las fallas tipográficas que vi en mis 
-ensayos previos, las mismas que el Modality Gap anticipa en el plano teórico 
+la geometría angular de CLIP. Esa falta de conexión explica las fallas tipográficas que vi en mis 
+ensayos previos, al igual que el Modality Gap anticipa en el plano teórico 
 \cite{liang2022mind}.
 \item[H2.] Al inyectar variabilidad controlada sobre la salida del proyector, el Ridge 
-Estocástico corre las predicciones hacia zonas del manifold CLIP donde SD 2.1 unCLIP las 
-procesa mejor. La consecuencia esperada es más coherencia semántica en CLIP-cos, y todo 
-ello sin pagar un entrenamiento contrastivo completo.
+Estocástico mueve las predicciones hacia zonas del manifold CLIP donde SD 2.1 unCLIP las 
+procesa mejor. La consecuencia esperada es de mayor coherencia semántica en CLIP-cos, y 
+todo lo anterior sin pagar un entrenamiento contrastivo completo.
 \end{itemize}
 
 \section{Justificación}
 
-Este estudio propone un puente interdisciplinario entre la neurociencia cognitiva y la in
-teligencia artificial. Busca llenar un vacío en el conocimiento al explorar cómo los modelos
-computacionales de semántica pueden alinearse con los mapas semánticos unificados del cerebro
-humano y la codificación de información relacional. Al hacerlo, se sientan las bases teóricas
-para la traducción computacional de la semántica visual, avanzando en la comprensión de
-cómo la información se representa tanto en sistemas biológicos como artificiales. 
+Este estudio busca unir la neurociencia cognitiva con la inteligencia artificial. 
+Quiere entender cómo los modelos computacionales de semántica se relacionan con cómo el 
+cerebro humano procesa la información.
 
-Las aplicaciones potenciales de esta tecnología son transformadoras y de alto impacto
-social. En el ámbito clínico, podría ofrecer vías de comunicación avanzadas para pacientes
-con discapacidades severas, permitiéndoles externalizar pensamientos visuales complejos.
-En la neurociencia, serviría como una herramienta computacional para validar modelos de
-codificación cerebral, afinar la decodificación intermodal abre la puerta, más adelante, a BCIs 
-no invasivas para pacientes con síndrome de enclaustramiento, a estudios de patologías donde 
-se mezclan lo percibido y lo imaginado, y a canales de salida para personas con discapacidad 
-motora grave permitiendo a los investigadores ”ver” lo que el modelo predice que el cerebro está 
-representando.
+Al explorar esta conexión, se pueden sentar las bases para traducir la semántica visual
+a un formato computable. Esto puede mejorar nuestra comprensión de cómo la información
+se representa en sistemas biológicos y artificiales.
 
-El enfoque de esta investigación es novedoso, ya que explora la síntesis generativa condicionada 
-por la actividad cerebral, alejándose de la simple clasificación de categorías. Propone la integración 
-de arquitecturas de vanguardia (LDMs y CLIP) que han demostrado resultados de alta fidelidad en los 
-estudios más recientes, aplicando estos métodos a la decodificación de señales complejas. 
-El diseño conceptual resultante servirá de guía metodológica para futuras implementaciones 
-experimentales en el laboratorio.
+Las posibles aplicaciones de esta tecnología son muy prometedoras y podrían tener un gran 
+impacto en la sociedad. En el ámbito clínico, podría ayudar a pacientes con discapacidades graves a comunicarse mejor. Por ejemplo, podrían expresar pensamientos visuales complejos.
+
+En la neurociencia, esta tecnología podría ser una herramienta valiosa. Ayudaría a 
+validar modelos de cómo el cerebro codifica la información. También podría llevar al 
+desarrollo de interfaces cerebro-computadora no invasivas. Esto podría ser especialmente 
+útil para pacientes con síndrome de enclaustramiento.
+
+Además, podría ayudar a estudiar enfermedades donde la percepción y la imaginación se 
+mezclan. También podría ofrecer nuevas formas de comunicación para personas con 
+discapacidad motora grave.
+
+Lo innovador de este enfoque es que explora la creación de contenido basado en la 
+actividad cerebral. No se enfoca solo en clasificar categorías. Propone combinar técnicas 
+avanzadas que han dado buenos resultados en estudios recientes.
+
+El resultado será una guía para futuras investigaciones en el laboratorio. Esto podría 
+llevar a nuevos avances en la comprensión del cerebro humano y en el desarrollo de 
+tecnologías más sofisticadas.
 
 \section{Estructura de la Tesis}
 
 \begin{itemize}
-\item Cap. 2 --- Marco Teórico: Este capítulo arma las bases teóricas que se necesitan para 
-entender el problema de traducir entre señales cerebrales y espacios latentes visuales.
-Está dividido en cuatro bloques que se complementan: la biología de la
-señal neuronal (Neurociencia Computacional), cómo se formaliza el mapeo
-en alta dimensionalidad (Matemáticas y Computación), las representaciones
-semánticas (Inteligencia Artificial Multimodal) y los motores que arman
-las imágenes (Modelos Generativos Profundos)
+\item Cap. 2 --- Marco Teórico:Este capítulo establece las bases teóricas necesarias para 
+comprender el problema de traducir señales cerebrales a espacios latentes visuales.
+Se divide en cuatro partes que se complementan entre sí. La primera parte se enfoca en la 
+biología de la señal neuronal, también conocida como Neurociencia Computacional.
+La segunda parte explica cómo se formaliza el mapeo en alta dimensionalidad, utilizando 
+Matemáticas y Computación.
+La tercera parte se centra en las representaciones semánticas, que son parte de la 
+Inteligencia Artificial Multimodal.
+Finalmente, la cuarta parte trata sobre los motores que crean las imágenes, conocidos 
+como Modelos Generativos Profundos.
 
 \item Cap. 3 --- Estado del Arte: Lo que arrancó como un intento de reconstruir
 píxeles directo hoy se mira como un problema de traducción semántica entre

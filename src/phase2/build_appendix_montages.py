@@ -128,43 +128,61 @@ def write_tex_snippet(
     page_names: list[str],
     fig_relpath: str,
     subjects: list[str],
-    span: str,
+    per_page: int,
     label_prefix: str,
 ) -> None:
     """
-    Escribe un `.tex` con un float por página, para `\\input` desde el apéndice.
-    span='page' usa figure* (ancho de página en doble columna); span='column'
-    usa figure normal (ancho de una columna).
+    Escribe un `.tex` para `\\input` desde el apéndice.
+
+    Las tiras se empaquetan a `per_page` por hoja mediante `minipage`s puestas
+    una al lado de otra (formato comprimido en doble columna): con per_page=2
+    cada tira ocupa media hoja y caben dos por página, de modo que las
+    reconstrucciones y sus pares entran mejor sin desperdiciar espacio. Sólo usa
+    `graphicx` (minipage es núcleo LaTeX), sin paquetes extra.
     """
-    env = "figure*" if span == "page" else "figure"
-    width = r"\textwidth" if span == "page" else r"\linewidth"
     n = len(page_names)
+    per_page = max(1, per_page)
     subj_txt = ", ".join(subjects) if subjects else ""
+    # Ancho de cada minipage: reparte ~0.98\textwidth entre las columnas.
+    mp_w = round(0.98 / per_page, 3)
 
     lines: list[str] = [
         "% Auto-generado por phase2/build_appendix_montages.py — no editar a mano.",
         "% Regenerar tras nuevas reconstrucciones y volver a compilar.",
+        f"% Layout: {per_page} tira(s) por hoja (doble columna comprimida).",
         "",
     ]
-    for k, name in enumerate(page_names, 1):
-        label = f"{label_prefix}:p{k:02d}"
+
+    groups = _chunk(page_names, per_page)
+    for gi, group in enumerate(groups, 1):
+        first = (gi - 1) * per_page + 1
+        last = first + len(group) - 1
+        blocks = [
+            f"  \\begin{{minipage}}[t]{{{mp_w}\\textwidth}}\n"
+            f"    \\centering\n"
+            f"    \\includegraphics[width=\\linewidth]{{{fig_relpath}/{name}}}\n"
+            f"  \\end{{minipage}}"
+            for name in group
+        ]
+        rango = f"parte {first}" if first == last else f"partes {first}--{last}"
         lines += [
-            f"\\begin{{{env}}}[htbp]",
+            "\\begin{figure}[htbp]",
             "  \\centering",
-            f"  \\includegraphics[width={width}]{{{fig_relpath}/{name}}}",
-            f"  \\caption[Galería de reconstrucciones ({k}/{n})]{{Reconstrucciones "
-            f"cross-subject sobre estímulos BOLD5000 (parte {k} de {n}). "
+            "  \\hfill\n".join(blocks),
+            f"  \\caption[Galería de reconstrucciones ({rango}/{n})]{{Reconstrucciones "
+            f"cross-subject sobre estímulos BOLD5000 ({rango} de {n}). "
             f"Columna~1: estímulo original; columnas~2--{1 + len(subjects)}: "
             f"reconstrucción SD~2.1 unCLIP por sujeto ({subj_txt}).}}",
-            f"  \\label{{fig:{label}}}",
-            f"\\end{{{env}}}",
+            f"  \\label{{fig:{label_prefix}:g{gi:02d}}}",
+            "\\end{figure}",
             "\\clearpage",
             "",
         ]
 
     tex_path.parent.mkdir(parents=True, exist_ok=True)
     tex_path.write_text("\n".join(lines), encoding="utf-8")
-    logger.info("snippet LaTeX -> %s (%d floats)", tex_path, n)
+    logger.info("snippet LaTeX -> %s (%d tiras, %d floats, %d/hoja)",
+                tex_path, n, len(groups), per_page)
 
 
 # ---------------------------------------------------------------------------
@@ -202,10 +220,10 @@ def main() -> int:
     ap.add_argument("--cell-px", type=int, default=256, help="Resolución por celda.")
     ap.add_argument("--dpi", type=int, default=150)
     ap.add_argument("--emit-tex", action="store_true",
-                    help="Escribe también un snippet .tex con un float por página.")
-    ap.add_argument("--span", choices=["page", "column"], default="column",
-                    help="figure a ancho de columna (default, plantilla single-column) "
-                         "o figure* a ancho de página (documento a doble columna).")
+                    help="Escribe también un snippet .tex agrupando las tiras.")
+    ap.add_argument("--per-page", type=int, default=2,
+                    help="Tiras por hoja en el .tex (default 2 = doble columna "
+                         "comprimida). 1 = una tira a ancho completo por hoja.")
     ap.add_argument("--fig-relpath", default=DEFAULT_FIG_RELPATH,
                     help="Ruta que usará \\includegraphics dentro del .tex.")
     args = ap.parse_args()
@@ -271,7 +289,7 @@ def main() -> int:
             page_names=page_names,
             fig_relpath=args.fig_relpath,
             subjects=args.subjects,
-            span=args.span,
+            per_page=args.per_page,
             label_prefix=args.prefix,
         )
 

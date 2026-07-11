@@ -10,39 +10,44 @@ de diseño que aparecen en los capítulos~5 y~6.
 
 \section{Fundamentos Neurocientíficos}
 
-Antes de decodificar la actividad visual conviene saber cómo el cerebro codifica lo que percibe 
-y cómo se mide esa actividad. Sigo aquí la cadena causal completa ---estímulo$\rightarrow$actividad 
-neuronal$\rightarrow$señal BOLD$\rightarrow$coeficiente $\beta$ por trial--- y, con ella, la 
-organización jerárquica del córtex visual, que es la que justifica la partición biológica de 
-vóxeles que uso en la tesis.
+Antes de entender cómo el cerebro interpreta lo que vemos, es importante saber cómo procesa la información visual y cómo se mide esta actividad.
+
+La secuencia que sigo es la siguiente: un estímulo visual llega al cerebro, lo que provoca actividad neuronal; esta actividad neuronal se convierte en una señal BOLD; finalmente, esta señal se traduce en un coeficiente $\beta$ para cada ensayo.
+
+Esta cadena de eventos me permite entender la organización jerárquica del córtex visual. Esta organización es crucial porque justifica por qué divido el cerebro en áreas específicas, llamadas vóxeles, de la manera que lo hago en mi tesis.
+
 
 \subsection{La Señal BOLD: Acoplamiento Neurovascular y Física de la Medición}
 
-La Resonancia Magnética funcional (fMRI) no capta directamente los potenciales de acción ni las 
-corrientes postsinápticas. Lo que mide es una correlación indirecta, nacida del acoplamiento 
-neurovascular~\cite{ogawa1990brain,logothetis2001neurophysiological,logothetis2008what}. El 
-mecanismo es el siguiente: cuando un grupo de neuronas se activa ante un estímulo, su consumo 
-local de oxígeno sube; la respuesta vascular sobrecompensa y envía más sangre de la gastada, 
-lo que cambia la proporción local entre oxihemoglobina (diamagnética) y desoxihemoglobina 
-(paramagnética). Como la desoxihemoglobina distorsiona más el campo magnético, el cociente 
-entre ambas modula la señal de resonancia ponderada en $T_2^{*}$. Esa señal es la que llamamos 
-Blood-Oxygen-Level-Dependent (BOLD).
+La Resonancia Magnética funcional, o fMRI, no mide directamente la actividad de las neuronas. 
+Lo que hace es medir una correlación indirecta con la actividad cerebral. Esto se debe a la conexión 
+entre la actividad neuronal y el flujo sanguíneo en el cerebro~\cite{ogawa1990brain,logothetis2001neurophysiological,logothetis2008what}.
 
-Ahora bien, el disparo neuronal y la respuesta BOLD no van de la mano en el tiempo. La Función 
-de Respuesta Hemodinámica (HRF) es una convolución que llega a su pico unos 5--6\,s después del 
-estímulo y no vuelve a la línea base hasta los 16\,s aproximadamente. Ese retraso trae tres 
-consecuencias prácticas para el diseño experimental. Primero, la resolución temporal del fMRI 
-vive en segundos, no en milisegundos como la electrofisiología. Segundo, la deconvolución por 
-trial pide modelos GLM bien planteados; por eso BOLD5000~\cite{chang2019bold5000} recurre al 
-esquema Least-Squares-Separate (LSS)~\cite{mumford2012deconvolving}, que entrega coeficientes 
-$\beta$ independientes para cada presentación. Y tercero, la relación señal-ruido (SNR) por 
-vóxel ronda entre 0.5 y 2.0, muy por debajo de lo que da, por ejemplo, la electroencefalografía 
-intracraneal.
+Cuando un grupo de neuronas se activa, necesita más oxígeno. El cuerpo responde enviando más sangre 
+a esa área. Esto cambia la proporción de oxígeno en la sangre y, como resultado, cambia la señal de 
+resonancia magnética. A esta señal se le llama Blood-Oxygen-Level-Dependent, o BOLD.
 
-En BOLD5000 cada vóxel mide alrededor de $2\!\times\!2\!\times\!2$\,mm y resume la actividad de 
-cientos de miles de neuronas. Por eso el vector de actividad por estímulo que manejo es 
-$\boldsymbol{\beta}_i \in \mathbb{R}^V$, donde $V$ cuenta los vóxeles dentro de la máscara 
-cortical visual elegida. Dos detalles más dan idea de lo difícil del problema. Uno: la varianza 
+Sin embargo, la actividad neuronal y la respuesta BOLD no ocurren al mismo tiempo. La respuesta 
+BOLD tarda unos 5 o 6 segundos en alcanzar su punto máximo después del estímulo y no vuelve a la 
+normalidad hasta después de unos 16 segundos. Esto tiene varias consecuencias importantes para los 
+experimentos de fMRI.
+
+En primer lugar, la resolución temporal de la fMRI es de segundos, no de milisegundos como en la 
+electrofisiología. En segundo lugar, para analizar los datos de fMRI, se necesitan modelos 
+estadísticos bien diseñados, como el esquema Least-Squares-Separate~\cite{mumford2012deconvolving}. Y en tercer lugar, la relación 
+señal-ruido en la fMRI es relativamente baja, lo que puede hacer que sea más difícil obtener resultados 
+precisos.
+
+La Función de Respuesta Hemodinámica, o HRF, es una herramienta que se utiliza para entender cómo 
+la actividad neuronal se relaciona con la respuesta BOLD. El estudio BOLD5000~\cite{chang2019bold5000} utiliza este enfoque 
+para analizar los datos de fMRI y obtener coeficientes independientes para cada presentación. Esto 
+puede ayudar a mejorar la precisión de los resultados en los experimentos de fMRI.
+
+En BOLD5000 cada vóxel mide unos 2 milímetros en cada dimensión y representa la actividad de cientos 
+de miles de neuronas. Entonces, el vector de actividad por estímulo que manejo es el vector 
+$\boldsymbol{\beta}_i$ en los números reales con dimensiones $V$, donde $V$ es el número de vóxeles 
+dentro de la máscara cortical visual que se ha elegido. 
+Dos detalles más dan idea de lo difícil del problema. Uno: la varianza 
 entre sujetos ante los mismos estímulos es alta, y de ahí que los modelos por-sujeto sigan 
 siendo el estándar en la literatura reciente~\cite{scotti2023mindeye,scotti2024mindeye2,takagi2023,ozcelik2023}. 
 Otro: la respuesta BOLD agregada refleja sobre todo potenciales de campo locales de origen 
@@ -54,18 +59,17 @@ El córtex visual humano trabaja de forma jerárquica y repartida~\cite{felleman
 dicarlo2012does}. La luz que recogen los fotorreceptores de la retina viaja por el nervio óptico 
 hasta el núcleo geniculado lateral del tálamo y, de ahí, salta al córtex estriado (V1). Allí 
 arranca un procesamiento que pronto se bifurca en dos vías paralelas: la dorsal (el ``dónde'', 
-parieto-occipital) y la ventral (el ``qué'', occipito-temporal). Me quedo con la ventral, 
-porque es la que sostiene la representación categórica del contenido visual, que al final es 
-lo que quiero decodificar.
+parieto-occipital) y la ventral (el ``qué'', occipito-temporal).Me quedo con la ventral, porque es la que sostiene la representación categórica del contenido visual, que al final es lo que quiero decodificar.
+En otras palabras, la ventral es la parte que ayuda a entender las categorías de las imágenes, y eso es lo que me interesa descifrar.
 
-Las áreas tempranas ---V1, V2 y V3--- codifican rasgos de bajo nivel: contrastes, bordes 
-orientados, frecuencias espaciales locales, disparidad binocular. En ellas se reconocen los 
-principios de selectividad que Hubel y Wiesel describieron en su día~\cite{hubel1962receptive}. 
-Cuando la señal llega a V4 y al Complejo Occipital Lateral (LOC), la selectividad ya apunta a 
-formas más complejas, partes de objeto y agrupaciones perceptuales. Y pasado LOC aparecen 
-regiones dedicadas a categorías puntuales: el Área Facial Fusiforme (FFA) para rostros, el Área 
-Parahipocampal de Lugares (PPA) para escenas y entornos, y el Área Extracorporal (EBA) para 
-partes del cuerpo. Toda esta organización modular está bien cartografiada gracias a estudios de 
+Las áreas tempranas, como V1, V2 y V3, se encargan de codificar características básicas,
+como contrastes, bordes orientados, frecuencias espaciales locales y disparidad binocular.
+En estas áreas, se pueden ver los principios de selectividad descritos por Hubel y Wiesel.
+Cuando la señal llega a V4 y al Complejo Occipital Lateral (LOC), la selectividad se
+centra en formas más complejas, partes de objetos y agrupaciones perceptuales.
+Más allá de LOC, hay regiones que se especializan en categorías específicas, como
+el Área Facial Fusiforme (FFA) para rostros, el Área Parahipocampal de Lugares (PPA)
+para escenas y entornos, y el Área Extracorporal (EBA) para partes del cuerpo. Toda esta organización modular está bien cartografiada gracias a estudios de 
 codificación retinotópica y categórica~\cite{kay2008identifying,naselaris2011encoding,huth2012continuous,kriegeskorte2008representational}.
 
 De aquí salen tres consecuencias que condicionan el diseño. La primera: la información de una 
@@ -81,21 +85,17 @@ sección~\ref{sec:voxel_selection}.
 
 \section{Fundamentos Matemáticos y Computacionales}
 
-Con la señal BOLD ya extraída por GLM-LSS, decodificar pasa a ser un problema de mapeo 
-matemático $f: \mathbb{R}^V \rightarrow \mathbb{R}^D$, con $V$ el número de vóxeles de la 
-máscara cortical y $D$ la dimensión del espacio latente objetivo (aquí $D=768$, el de CLIP 
-ViT-L/14). El resumen es simple: hay muchas más columnas que filas y necesitamos un mapa 
-estable. En esta sección formalizo el régimen $p\!\gg\!n$ propio de la decodificación neural~\cite{hastie2009elements}, 
-presento la regularización de Tikhonov~\cite{tikhonov1977solutions} como solución cerrada 
-lineal y analizo la explosión combinatoria que aparece al querer elegir el mejor subconjunto de 
+Para empezar, ya tenemos la señal BOLD extraída por GLM-LSS. Ahora, el problema es encontrar una forma de decodificarla. Esto se puede ver como un problema de mapeo matemático, que se puede representar como una función $f$ que va de un espacio $\mathbb{R}^V$ a otro espacio $\mathbb{R}^D$. Aquí, $V$ es el número de vóxeles en la máscara cortical y $D$ es la dimensión del espacio latente que queremos alcanzar, que en este caso es $768$, igual que el utilizado en CLIP ViT-L/14.
+El tema es que hay muchas más columnas que filas, lo que hace que necesitemos un mapa que sea estable y confiable.
+En esta sección se formaliza el régimen $p\!\gg\!n$ propio de la decodificación neural~\cite{hastie2009elements}, 
+presenta la regularización de Tikhonov~\cite{tikhonov1977solutions} como solución cerrada 
+lineal y se analiza la explosión combinatoria que aparece al querer elegir el mejor subconjunto de 
 vóxeles~\cite{garey1979computers}.
 
 \subsection{Alta Dimensionalidad y el Problema $p \gg n$}
 
-Como dirian los creadores de los transformes estamos ante un caso de manual de la ``maldición 
-de la dimensionalidad''~\cite{hastie2009elements}. Pensémoslo con una imagen: ajustar una recta 
-con mil puntos y dos variables es trivial; con cinco mil puntos y cincuenta mil variables 
-uno ya no ajusta nada, memoriza. 
+Los creadores de los transformadores dicen que estamos ante un caso de lo que ellos llaman la ``maldición de la dimensionalidad''~\cite{hastie2009elements}. Para entender esto mejor, pensemos en una imagen.
+Si tenemos que ajustar una recta con mil puntos y solo dos variables, es muy fácil de hacer. Sin embargo, si tenemos que ajustar una recta con cinco mil puntos y cincuenta mil variables, ya no es tan simple. En ese caso, en lugar de ajustar la recta, lo que hacemos es memorizar los datos.
 
 En BOLD5000 los predictores (vóxeles, $V \approx 5\!\times\!10^{3}$--$5\!\times\!10^{4}$ según 
 cómo se enmascare) superan por varios órdenes de magnitud a las muestras de entrenamiento 
@@ -164,41 +164,46 @@ hasta $\binom{V}{k}$; y si encima se piden restricciones de balanceo entre regio
 $NP$-completo en sentido fuerte~\cite{garey1979computers}. Con esa dureza, la búsqueda 
 exhaustiva queda descartada.
 
-Quedan al menos tres familias de aproximación. La búsqueda greedy sobre funciones submodulares 
-monótonas garantiza una aproximación $(1 - 1/e)$ respecto al óptimo~\cite{nemhauser1978,krause2014submodular}, 
-pero antes hay que demostrar que la función objetivo (información mutua o pérdida del decodificador) 
-es submodular, y eso no es nada fácil. La relajación convexa con Lasso o Elastic-Net cambia la 
-selección discreta por una continua, aunque deja coeficientes pequeños no nulos que toca 
-umbralizar a mano. La partición biológica fija, en cambio, sacrifica la optimalidad teórica a 
-cambio de estabilidad y reproducibilidad: da por sentado que la máscara cortical de BOLD5000, 
-validada con localizadores funcionales aparte, concentra casi toda la información discriminativa. 
-Me quedo con esta última, que es la más eficiente en lo metodológico; dejo la extracción de los 
-patrones finos al adapter no lineal del capítulo~6 y guardo la formulación submodular para la 
-extensión a BCI en tiempo real del capítulo~9.
+Quedan al menos tres formas de aproximarse a este problema. Una de ellas es el método greedy, que se aplica a funciones submodulares monótonas. Este método garantiza una aproximación muy buena, de un $(1 - 1/e)$, con respecto a la solución óptima, como se ha demostrado en trabajos anteriores ~\cite{nemhauser1978,krause2014submodular}. Sin embargo, antes de aplicar este método, hay que demostrar que la función que estamos utilizando, ya sea la información mutua o la pérdida del decodificador, es submodular. Esto no es fácil de hacer.
+
+Otra forma de abordar este problema es utilizando la relajación convexa con Lasso o Elastic-Net. Esto convierte el problema de selección discreta en uno continuo. Aunque esto facilita el cálculo, deja algunos coeficientes pequeños que no son nulos y que hay que umbralizar manualmente.
+
+La otra opción que considero es la partición biológica fija. Esta opción sacrifica la optimalidad teórica a cambio de estabilidad y reproducibilidad. Se basa en la idea de que la máscara cortical de BOLD5000, que ha sido validada con localizadores funcionales aparte, contiene casi toda la información discriminativa. Me parece que esta es la opción más eficiente en términos metodológicos. Dejo la extracción de los patrones finos para el adapter no lineal del capítulo 6 y reservo la formulación submodular para la extensión a BCI en tiempo real del capítulo 9.
+
 
 \section{Fundamentos de Inteligencia Artificial Multimodal}
 
-El ``dominio de llegada'' de la traducción intermodal es un hiperespacio continuo de 
-representación: el espacio latente. En esta sección repaso las arquitecturas Transformer que lo 
-producen, el aprendizaje contrastivo que alinea modalidades dentro de él y una propiedad 
-geométrica que resulta decisiva, el Modality Gap, que es lo que empuja a cambiar el adapter 
+El “dominio de llegada” de la traducción intermodal es un espacio de representación continuo y amplio llamado espacio latente. En esta parte, voy a revisar las arquitecturas Transformer que lo generan.
+
+Estas arquitecturas utilizan un tipo de aprendizaje llamado aprendizaje contrastivo. Este aprendizaje ayuda a alinear diferentes modalidades dentro del espacio latente.
+
+Una propiedad geométrica importante resulta crucial en este proceso, el Modality Gap, que es lo que empuja a cambiar el adapter 
 Ridge por uno contrastivo en el capítulo~6.
 
 \subsection{Mecanismo de Auto-Atención y Vision Transformers}
 
-El Teorema de Aproximación Universal dice que una red suficientemente profunda puede aproximar 
-cualquier función continua sobre un dominio compacto. Los Transformers~\cite{vaswani2017attention} 
-llevan esa idea a la práctica con la auto-atención, que cambia el sesgo inductivo convolucional 
-por un cómputo de pesos dinámicos. Partiendo de una secuencia de tokens 
-$\mathbf{X}\in\mathbb{R}^{n\times d}$, se proyectan tres tensores como: consultas $\mathbf{Q}=\mathbf{X}\mathbf{W}_Q$, llaves $\mathbf{K}=\mathbf{X}\mathbf{W}_K$ y valores $\mathbf{V}=\mathbf{X}\mathbf{W}_V$ y la atención se calcula como
+El Teorema de Aproximación Universal establece que una red neuronal lo suficientemente profunda puede 
+aproximar cualquier función continua dentro de un dominio compacto. Los Transformers ~\cite{vaswani2017attention} 
+llevan esta idea a la práctica mediante la auto-atención, lo que cambia el enfoque tradicional de los 
+sesgos inductivos convolucionales por un cálculo de pesos dinámicos.
+
+Comenzando con una secuencia de tokens, representada como $\mathbf{X}$ en un espacio de 
+$\mathbb{R}^{n\times d}$, se generan tres tensores: consultas $\mathbf{Q}$, llaves $\mathbf{K}$ y 
+valores $\mathbf{V}$. Estos se calculan mediante la proyección de $\mathbf{X}$ sobre diferentes matrices 
+de pesos: $\mathbf{W}_Q$, $\mathbf{W}_K$ y $\mathbf{W}_V$. La atención se calcula utilizando la fórmula:
+
 \begin{equation}
 \text{Attn}(\mathbf{Q},\mathbf{K},\mathbf{V}) = \text{softmax}\!\left(\frac{\mathbf{Q}\mathbf{K}^\top}{\sqrt{d_k}}\right)\mathbf{V}.
 \end{equation}
-\myequations{Atención escalada por producto punto}
-El factor $1/\sqrt{d_k}$ evita que el softmax se sature en alta dimensión. La versión multi-
-cabeza corre $h$ proyecciones en paralelo para captar relaciones en subespacios distintos, y el 
-bloque Transformer completo alterna atención con redes feed-forward, conexiones residuales y 
-normalización por capa~\cite{ba2016layernorm,ioffe2015batchnorm}.
+
+Esta fórmula se conoce como atención escalada por producto punto. El factor $1/\sqrt{d_k}$ es importante 
+porque evita que el softmax se sature cuando se trabaja con dimensiones altas.
+
+La versión multi-cabeza de los Transformers ejecuta $h$ proyecciones en paralelo. Esto permite capturar 
+relaciones en subespacios distintos. Un bloque Transformer completo alterna entre la atención y redes 
+eed-forward, conexiones residuales y normalización por capa, según se describe en trabajos como los de 
+Ba y Ioffe ~\cite{ba2016layernorm,ioffe2015batchnorm}.
+
 
 El Vision Transformer (ViT)~\cite{dosovitskiy2021image} lleva esta arquitectura a las imágenes. 
 Una imagen $\mathbf{I}\in\mathbb{R}^{H\times W\times 3}$ se trocea en una rejilla de parches 
@@ -268,29 +273,32 @@ MSE
 \mathcal{L}_{\text{MSE}}(\mathbf{f},\mathbf{c}^{*}) = \|\mathbf{f}-\mathbf{c}^{*}\|_2^2 = \|\mathbf{f}\|_2^2 - 2\langle\mathbf{f},\mathbf{c}^{*}\rangle + \|\mathbf{c}^{*}\|_2^2
 \end{equation}
 \myequations{Descomposición del MSE en magnitud y dirección}
-mezcla dos metas que no van de la mano: acortar la diferencia de magnitudes $\|\mathbf{f}\|_2^2 - \|\mathbf{c}^{*}\|_2^2$ 
-y subir el producto interno $\langle\mathbf{f},\mathbf{c}^{*}\rangle$. En un espacio direccional 
-como el de CLIP, donde el significado se codifica en el ángulo y no en la norma, el primer término 
-mete un gradiente espurio que arrastra todas las predicciones hacia la norma media del conjunto. 
-Ese es, justamente, el colapso que se observa con Ridge.
+La combinación de dos objetivos que no son compatibles es un problema. Por un lado, se intenta reducir la 
+diferencia entre la magnitud de $\mathbf{f}$ y la magnitud de $\mathbf{c}^{*}$, es decir, 
+$\|\mathbf{f}\|_2^2 - \|\mathbf{c}^{*}\|_2^2$. Por otro lado, se busca aumentar el producto interno 
+$\langle\mathbf{f},\mathbf{c}^{*}\rangle$.
 
-La InfoNCE juega otro partido. Trabaja sobre productos internos normalizados 
-$\hat{\mathbf{f}}\cdot\hat{\mathbf{c}}^{*} = \cos\theta$ y maximiza la información mutua del 
-par positivo $(\hat{\mathbf{f}}_i,\hat{\mathbf{c}}^{*}_i)$ frente a los negativos 
-$\{(\hat{\mathbf{f}}_i,\hat{\mathbf{c}}^{*}_j)\}_{j\neq i}$ del mismo mini-batch
-~\cite{vandenoord2018representation}. Su objetivo es
+En un espacio como el de CLIP, donde el significado se representa mediante ángulos y no mediante normas, 
+el primer término introduce un gradiente que no es deseado. Esto hace que todas las predicciones se muevan 
+hacia la norma media del conjunto de datos. Este es el colapso que se observa cuando se utiliza Ridge.
+
+Por otro lado, la función de pérdida InfoNCE juega un papel diferente. Trabaja con productos internos 
+normalizados, como $\hat{\mathbf{f}}\cdot\hat{\mathbf{c}}^{*} = \cos\theta$, y busca maximizar la 
+información mutua entre el par positivo $(\hat{\mathbf{f}}_i,\hat{\mathbf{c}}^{*}_i)$ y los pares 
+negativos $\{(\hat{\mathbf{f}}_i,\hat{\mathbf{c}}^{*}_j)\}_{j\neq i}$ dentro del mismo lote de 
+entrenamiento~\cite{vandenoord2018representation}. Su objetivo es
 \begin{equation}
 \mathcal{L}_{\text{NCE}}^{f\rightarrow c} = -\frac{1}{N}\sum_{i=1}^{N}\log\frac{\exp(\hat{\mathbf{f}}_i\cdot\hat{\mathbf{c}}^{*}_i/\tau)}{\sum_{j=1}^{N}\exp(\hat{\mathbf{f}}_i\cdot\hat{\mathbf{c}}^{*}_j/\tau)},
 \end{equation}
 \myequations{InfoNCE direccional fMRI$\rightarrow$CLIP}
 y su versión bidireccional añade el término simétrico 
-$\mathcal{L}_{\text{NCE}}^{c\rightarrow f}$. Como el gradiente que sale es puramente angular y 
-no tira de la norma de $\mathbf{f}$ hacia ningún lado, el colapso de norma del Ridge desaparece. 
-La receta híbrida de MindEye~\cite{scotti2023mindeye} combina InfoNCE bidireccional (peso 1.0) 
-con MSE (peso 0.3) y coseno (peso 0.3), donde los dos términos auxiliares hacen de anclas 
-geométricas suaves sin robarle protagonismo al gradiente principal. Yo no entreno esa pérdida, 
-en su lugar aplico la corrección estocástica de norma y dirección que describo en la sección
-~\ref{sec:ridge_stoch}.
+$\mathcal{L}_{\text{NCE}}^{c\rightarrow f}$. 
+El gradiente que sale es puramente angular y no tira de la norma de $\mathbf{f}$ hacia ningún lado, por lo que el colapso de norma del Ridge 
+desaparece. La receta híbrida de MindEye~\cite{scotti2023mindeye} combina InfoNCE bidireccional con un 
+peso de 1.0, el error cuadrático medio con un peso de 0.3 y el coseno con un peso de 0.3.
+En este caso, los dos términos auxiliares actúan como anclas geométricas suaves sin robarle protagonismo 
+al gradiente principal. No entreno esa pérdida, en su lugar, aplico la corrección estocástica de norma y 
+dirección que describo en la sección ~\ref{sec:ridge_stoch}.
 
 \subsection{Bloques Residuales (referencia para la línea contrastiva)}
 
@@ -303,26 +311,29 @@ por capa en pre-activación~\cite{ba2016layernorm}. Un bloque residual hace
 \myequations{Bloque residual pre-norm}
 donde $\text{MLP}(\cdot)$ es una red feed-forward de dos capas con activación GELU. La 
 conexión $+\mathbf{h}_l$ deja pasar el gradiente sin que se atenúe, y así resuelve el problema 
-el vanishing gradients de las MLPs profundas. Se prefiere la normalización por capa a la batch 
-normalization~\cite{ioffe2015batchnorm} porque con batches pequeños ($N\!\leq\!64$), como los 
-de BOLD5000, las estadísticas por batch dejan de ser fiables. Como referencia, la configuración 
-típica de MindEye apila cuatro de estos bloques con dimensión oculta $h\!=\!4096$, lo que da 
-unos 154 millones de parámetros entrenables. No entreno esta arquitectura en la tesis; la 
-documento porque marca la extensión natural del trabajo (Cap.~9) y porque compararla con el 
-Ridge Estocástico deja medir el costo-beneficio de dar el salto a un contrastivo completo.
+el vanishing gradients de las MLPs profundas. Se prefiere la normalización por ~\cite{ioffe2015batchnorm} 
+capa en lugar de la normalización por lote porque cuando se trabaja con 
+lotes pequeños, como los de BOLD5000, las estadísticas de cada lote dejan de ser fiables.
+Por ejemplo, la configuración typical de MindEye utiliza cuatro de estos bloques con una dimensión 
+oculta de 4096, lo que resulta en unos 154 millones de parámetros que se pueden entrenar.
+No entreno esta arquitectura en la tesis, pero la documento porque es una extensión natural del trabajo 
+que se presenta en el Capítulo 9 y porque compararla con el Ridge Estocástico permite medir el costo y el 
+beneficio de dar el salto a un enfoque contrastivo completo.
 
 \section{Ridge Estocástico: Formalización Teórica}\label{sec:ridge_stoch}
 
-El Ridge Estocástico es el corazón metodológico de esta tesis: una corrección barata del Ridge 
-Lineal que le devuelve dos rasgos geométricos del manifold CLIP, la norma típica y la 
-variabilidad direccional sin tener que entrenar un adapter no lineal. La intuición cabe en una 
-frase: si el Ridge entrega siempre el mismo vector promedio y aplanado, basta con sacudirlo un 
-poco y volver a pegarlo a la esfera donde viven los embeddings de verdad. La idea la tomo de 
-la familia MindEye~\cite{scotti2023mindeye,scotti2024mindeye2}, que dejó claro que lo que pesa 
-al decodificar es la geometría angular de CLIP~\cite{liang2022mind}, y también de leer la 
-regularización estocástica como un suavizado del estimador~\cite{hastie2009elements}. En lo que 
-sigue formalizo la construcción, argumento por qué corrige el fallo del Ridge y conecto el 
-ruido $\sigma$ con la métrica de evaluación final.
+El Ridge Estocástico es la base de esta tesis. Corrige de manera sencilla el Ridge Lineal.
+Devuelve dos características geométricas del manifold CLIP: la norma estándar y la
+variabilidad direccional. Esto se logra sin necesidad de entrenar un adaptador no lineal.
+La idea es simple: el Ridge siempre proporciona el mismo vector promedio y aplanado.
+Solo hay que moverlo un poco y volver a unirlo a la esfera donde se encuentran los
+embeddings reales.La idea la tomo de la familia MindEye~\cite{scotti2023mindeye,scotti2024mindeye2}. 
+Ellos mostraron que la geometría angular de CLIP~\cite{liang2022mind} es lo que realmente importa al 
+decodificar. También me basé en la idea de que la regularización estocástica puede verse como un 
+suavizado del estimador~\cite{hastie2009elements}. A continuación, formalizaré la construcción de esta
+idea. También explicaré por qué corrige el fallo del método Ridge. Además, mostraré cómo el ruido $\sigma$ 
+se relaciona con la métrica de evaluación final.
+
 
 \subsection{Definición y motivación geométrica}
 
@@ -337,28 +348,40 @@ a la predicción de un trial. El Ridge Estocástico la retoca en dos pasos:
 \hat{\mathbf{u}}_{\text{stoch}} = \frac{\hat{\mathbf{e}}_{\text{stoch}}}{\|\hat{\mathbf{e}}_{\text{stoch}}\|_2} \in \mathbb{S}^{D-1}.
 \end{equation}
 \myequations{Proyección sobre la hiperesfera unidad}
-Traducido: primero sacudo la salida del Ridge con ruido blanco y después la pego a la esfera 
-unidad. El ruido Gaussiano es isotrópico, pero al renormalizar la densidad queda concentrada 
-sobre un cono esférico cuyo eje apunta en la dirección de $\hat{\mathbf{e}}_{\text{Ridge}}$ y 
-cuya apertura crece de forma monótona con $\sigma/\|\hat{\mathbf{e}}_{\text{Ridge}}\|$. Esa 
-geometría sobre $\mathbb{S}^{D-1}$ no es nueva: el aprendizaje contrastivo ya la usa como 
-condición de alineación-uniformidad~\cite{vandenoord2018representation,liang2022mind}, según la 
-cual los embeddings de clases parecidas han de coincidir en dirección, no en magnitud. Con 
-$\sigma\!\ll\!\|\hat{\mathbf{e}}_{\text{Ridge}}\|$ obtengo casi la dirección Ridge 
-renormalizada; con $\sigma\!\gg\!\|\hat{\mathbf{e}}_{\text{Ridge}}\|$, algo cercano a una 
-distribución uniforme sobre $\mathbb{S}^{D-1}$. Entre ambos extremos hay un punto que maximiza 
-la separabilidad direccional entre clases visuales sin ahogarlas en ruido, y es justo ese punto 
-el que busca el barrido de $\sigma$ en el capítulo~6.
+Traducido: Primero tomo la salida del Ridge y la mezclo con ruido blanco, luego la adjunto a la esfera 
+unidad. El ruido Gaussiano se distribuye de manera uniforme en todas direcciones, pero cuando ajusto la 
+densidad, se concentra en un cono dentro de la esfera. La dirección del eje de este cono es la misma que 
+la de $\hat{\mathbf{e}}_{\text{Ridge}}$. La abertura del cono aumenta a medida que $\sigma$ se vuelve más 
+grande en comparación con $\|\hat{\mathbf{e}}_{\text{Ridge}}\|$. Esto no es algo nuevo en el ámbito de 
+$\mathbb{S}^{D-1}$. Técnicas como el aprendizaje contrastivo ya utilizan esta geometría para asegurar 
+que las representaciones sean alineadas y uniformes~\cite{vandenoord2018representation,liang2022mind}, 
+según la cual, los embeddings de clases similares deben tener la misma dirección, pero no necesariamente 
+la misma magnitud.
+Con $\sigma$ mucho menor que la norma de $\hat{\mathbf{e}}_{\text{Ridge}}$, obtengo una dirección muy 
+parecida a la de Ridge, pero renormalizada.
+En cambio, cuando $\sigma$ es mucho mayor que la norma de $\hat{\mathbf{e}}_{\text{Ridge}}$, se obtiene 
+algo cercano a una distribución uniforme sobre la esfera $\mathbb{S}^{D-1}$.
+El objetivo es encontrar un punto intermedio que maximice la separabilidad direccional entre clases 
+visuales sin que se pierdan en el ruido.
+Y ese punto es precisamente el que se busca en el barrido de $\sigma$ que se presenta en el capítulo~6.
 
 \subsection{Lectura como tempering posterior}
+En el modelo bayesiano de Ridge, se utiliza el modelo gaussiano para obtener una estimación de los coeficientes, que se denota por $\hat{\boldsymbol{\beta}}_{\text{MAP}}$.
 
-En el modelo Bayesiano del Ridge ($\hat{\boldsymbol{\beta}}_{\text{MAP}}$ Gaussiano)
-~\cite{hoerl1970ridge,hastie2009elements}, el muestreo $\boldsymbol{\xi}$ equivale, de forma 
-aproximada, a tomar una muestra del posterior predictivo
+Este modelo se basa en el trabajo de Hoerl y Hastie, quienes lo describieron en sus artículos \cite{hoerl1970ridge,hastie2009elements}.
+
+Cuando tomamos una muestra de $\boldsymbol{\xi}$, es similar a tomar una muestra de la distribución del modelo.
+
+Esta distribución se puede escribir como:
+
 \begin{equation}
-p(\mathbf{e}\!\mid\!\mathbf{x},\mathcal{D}) \approx \mathcal{N}\!\left(\mathbf{X}\hat{\boldsymbol{\beta}}_{\text{MAP}},\,\Sigma_{\text{pred}}\right),
+p(\mathbf{e}\!\mid\!\mathbf{x},\mathcal{D}) \approx \mathcal{N}\!\left(\mathbf{X}\hat{\boldsymbol{\beta}}_{\text{MAP}},\,\Sigma_{\text{pred}}\right)
 \end{equation}
 \myequations{Aproximación isotrópica del posterior predictivo}
+que es una distribución normal, con una media de $\mathbf{X}\hat{\boldsymbol{\beta}}_{\text{MAP}}$ y una covarianza de $\Sigma_{\text{pred}}$.
+
+El modelo bayesiano de Ridge se utiliza para realizar predicciones y es un tipo de modelo de regresión que se emplea para estimar los coeficientes, es decir, $\hat{\boldsymbol{\beta}}_{\text{MAP}}$.
+
 con $\Sigma_{\text{pred}}$ aproximada por la covarianza isotrópica $\sigma^2\mathbf{I}_D$. 
 Visto así, el modelo deja de devolver siempre la misma media: admite que no está seguro y 
 muestrea a su alrededor. El papel de la temperatura $\sigma$ es equilibrar exploración y 

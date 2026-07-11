@@ -66,16 +66,16 @@ N.~K. Logothetis, J.~Pauls, M.~Augath, T.~Trinath, and A.~Oeltermann,
   ``Neurophysiological investigation of the basis of the fmri signal,''
   \emph{Nature}, vol. 412, no. 6843, pp. 150--157, 2001.
 
-\bibitem{chang2019bold5000}
-N.~Chang, J.~A. Pyles, A.~Marcus, A.~Gupta, M.~J. Tarr, and E.~M. Aminoff,
-  ``Bold5000, a public fmri dataset while viewing 5000 visual images,''
-  \emph{Scientific Data}, vol.~6, p.~49, 2019.
-
 \bibitem{mumford2012deconvolving}
 J.~A. Mumford, B.~O. Turner, F.~G. Ashby, and R.~A. Poldrack, ``Deconvolving
   bold activation in event-related designs for multivoxel pattern
   classification analyses,'' \emph{NeuroImage}, vol.~59, no.~3, pp. 2636--2643,
   2012.
+
+\bibitem{chang2019bold5000}
+N.~Chang, J.~A. Pyles, A.~Marcus, A.~Gupta, M.~J. Tarr, and E.~M. Aminoff,
+  ``Bold5000, a public fmri dataset while viewing 5000 visual images,''
+  \emph{Scientific Data}, vol.~6, p.~49, 2019.
 
 \bibitem{scotti2023mindeye}
 P.~S. Scotti, A.~Banerjee, J.~Goode, S.~Shabalin, A.~Nguyen, E.~Cohen, A.~J.
@@ -107,11 +107,6 @@ D.~J. Felleman and D.~C. Van~Essen, ``Distributed hierarchical processing in
 \bibitem{dicarlo2012does}
 J.~J. DiCarlo, D.~Zoccolan, and N.~C. Rust, ``How does the brain solve visual
   object recognition?'' \emph{Neuron}, vol.~73, no.~3, pp. 415--434, 2012.
-
-\bibitem{hubel1962receptive}
-D.~H. Hubel and T.~N. Wiesel, ``Receptive fields, binocular interaction and
-  functional architecture in the cat's visual cortex,'' \emph{Journal of
-  Physiology}, vol. 160, no.~1, pp. 106--154, 1962.
 
 \bibitem{kay2008identifying}
 K.~N. Kay, T.~Naselaris, R.~J. Prenger, and J.~L. Gallant, ``Identifying
